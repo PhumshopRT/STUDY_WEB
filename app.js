@@ -1,10 +1,9 @@
 /**
- * 📚 StudyVault — OpenHiggsfield Studio Edition (Hardened & Full-Featured)
- * - Cached IndexedDB Blob URLs (zero flicker / zero leaks)
- * - Full Add / Edit / Delete / 6s Undo for Subjects, Links, Slides
- * - Link Upgrade flow: convert any SAMEORIGIN link to embedded HTML right in place
- * - Side-by-Side Split View with Draggable Resizer, Side Swap, Drag-and-Drop Slides, Popout Dual Window
- * - JSON Backup Export / Import
+ * 📚 StudyVault — Clean Production Studio Engine
+ * - Airy Daylight Porcelain (Default) & Luminous Midnight Navy (Dark Mode)
+ * - Fast Subject CRUD (Code + Title only) & Visible Delete + 6s Undo
+ * - Subject-Locked Upload Flow (Links, HTML Games/Charts/Simulations, PDF/Image Slides)
+ * - GoodNotes-style PDF Studio (Pen, Highlighter, Eraser, Undo/Redo, IndexedDB, Annotated PDF Export)
  */
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -23,15 +22,13 @@ document.addEventListener("DOMContentLoaded", () => {
   let iframeTimeoutHandle = null;
 
   // Modal Modes
-  let subSourceMode = "url";
   let lnkSourceMode = "url";
   let slideTypeMode = "pdf";
 
-  // Cached Blob URLs (idbKey -> objectUrl) to avoid redundant createObjectURL calls
   const blobUrlCache = new Map();
 
   // Storage Keys
-  const LS_THEME = "studyvault_theme";
+  const LS_THEME = "studyvault_theme_v2";
   const LS_FAVORITES = "studyvault_favorites";
   const LS_CUSTOM_SUBJECTS = "studyvault_custom_subjects";
   const LS_DELETED_SUBJECTS = "studyvault_deleted_subjects";
@@ -71,7 +68,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let deletedSubjectIds = new Set(loadJSON(LS_DELETED_SUBJECTS, []));
   let customLinksMap = loadJSON(LS_CUSTOM_LINKS, {});
   let deletedLinkIds = new Set(loadJSON(LS_DELETED_LINKS, []));
-  let linkOverrides = loadJSON(LS_LINK_OVERRIDES, {}); // linkId -> updated link fields
+  let linkOverrides = loadJSON(LS_LINK_OVERRIDES, {});
   let customSlidesMap = loadJSON(LS_CUSTOM_SLIDES, {});
   let deletedSlideIds = new Set(loadJSON(LS_DELETED_SLIDES, []));
   let favorites = new Set(loadJSON(LS_FAVORITES, []));
@@ -129,6 +126,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const themeToggleBtn = document.getElementById("theme-toggle-btn");
   const themeIcon = document.getElementById("theme-icon");
+  const themeLabel = document.getElementById("theme-label");
 
   const wsIcon = document.getElementById("ws-subject-icon");
   const wsCode = document.getElementById("ws-subject-code");
@@ -145,7 +143,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const wsSlidesCount = document.getElementById("ws-slides-count");
   const wsSlidesList = document.getElementById("ws-slides-list");
   const wsDesc = document.getElementById("ws-subject-desc");
-  const wsTags = document.getElementById("ws-subject-tags");
 
   const wsDualPanes = document.getElementById("ws-dual-panes");
   const wsWebPane = document.getElementById("ws-web-pane");
@@ -169,7 +166,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const restrictedAppSubtitle = document.getElementById("restricted-app-subtitle");
   const restrictedLinkName = document.getElementById("restricted-link-name");
   const restrictedOpenBtn = document.getElementById("restricted-open-btn");
-  const restrictedFallbackBtn = document.getElementById("restricted-fallback-btn");
 
   const slideDeckSelect = document.getElementById("slide-deck-select");
   const slideDeleteBtn = document.getElementById("slide-delete-btn");
@@ -188,6 +184,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const slideZoomLabel = document.getElementById("slide-zoom-label");
 
   const addSubjectModal = document.getElementById("add-subject-modal");
+  const manageSubjectsList = document.getElementById("manage-subjects-list");
+  const manageSubjectsCount = document.getElementById("manage-subjects-count");
   const addLinkModal = document.getElementById("add-link-modal");
   const addSlideModal = document.getElementById("add-slide-modal");
   const toastEl = document.getElementById("toast");
@@ -235,7 +233,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Toast + Undo
+  // Toast + 6s Undo
   function showToast(message, undoHandler = null) {
     toastMsg.textContent = message;
     toastEl.classList.remove("hidden");
@@ -252,33 +250,41 @@ document.addEventListener("DOMContentLoaded", () => {
       toastUndoBtn.onclick = null;
     }
 
-    toastProgress.classList.remove("ohf-drain-bar");
+    toastProgress.classList.remove("sv-drain-bar");
     void toastProgress.offsetWidth;
-    toastProgress.classList.add("ohf-drain-bar");
+    toastProgress.classList.add("sv-drain-bar");
 
     clearTimeout(window._toastTimer);
     window._toastTimer = setTimeout(() => toastEl.classList.add("hidden"), 6000);
   }
 
-  // 1. Theme
-  function initTheme() {
-    const saved = localStorage.getItem(LS_THEME);
-    if (saved === "light") {
-      htmlRoot.classList.remove("dark");
-      themeIcon.className = "ph ph-moon";
-    } else {
+  // 1. Theme (Default: Airy Daylight Porcelain, Toggle -> Midnight Cobalt Navy)
+  function applyThemeUI(isDark) {
+    if (isDark) {
       htmlRoot.classList.add("dark");
-      themeIcon.className = "ph ph-sun";
+      themeIcon.className = "ph ph-sun text-sm text-amber-300";
+      if (themeLabel) themeLabel.textContent = "โหมดสว่าง";
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#0b1120");
+    } else {
+      htmlRoot.classList.remove("dark");
+      themeIcon.className = "ph ph-moon text-sm text-indigo-600";
+      if (themeLabel) themeLabel.textContent = "โหมดมืด";
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#f4f6fb");
     }
   }
 
+  function initTheme() {
+    const saved = localStorage.getItem(LS_THEME);
+    applyThemeUI(saved === "dark");
+  }
+
   themeToggleBtn.addEventListener("click", () => {
-    const isDark = htmlRoot.classList.toggle("dark");
-    themeIcon.className = isDark ? "ph ph-sun" : "ph ph-moon";
+    const isDark = !htmlRoot.classList.contains("dark");
+    applyThemeUI(isDark);
     localStorage.setItem(LS_THEME, isDark ? "dark" : "light");
   });
 
-  // 2. Stats & Categories
+  // 2. Stats & Sliding Categories
   function updateStats() {
     statSubjects.textContent = String(allSubjects.length).padStart(2, "0");
     statLinks.textContent = String(allSubjects.reduce((s, x) => s + x.links.length, 0)).padStart(2, "0");
@@ -308,9 +314,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const btn = document.createElement("button");
       btn.setAttribute("data-active", isActive ? "true" : "false");
       btn.className = `relative z-10 h-8 px-2.5 rounded-[10px] text-xs font-medium flex items-center gap-1.5 whitespace-nowrap transition-colors ${
-        isActive ? "text-[var(--tx)]" : "text-[var(--tx3)] hover:text-[var(--tx2)]"
+        isActive ? "text-[var(--accent)] font-semibold" : "text-[var(--tx3)] hover:text-[var(--tx)]"
       }`;
-      btn.innerHTML = `<span>${cat}</span><span class="tnum text-[10px] ${isActive ? 'text-[var(--accent)] font-semibold' : 'text-[var(--tx4)]'}">${count}</span>`;
+      btn.innerHTML = `<span>${cat}</span><span class="tnum text-[10px] px-1.5 py-0.2 rounded-md ${isActive ? 'bg-[var(--accent-14)] text-[var(--accent)]' : 'bg-[var(--rail)] text-[var(--tx3)]'}">${count}</span>`;
       btn.addEventListener("click", () => selectCategory(cat));
       categoryTabsRail.appendChild(btn);
     });
@@ -337,8 +343,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const matchSearch = !q ||
         sub.title.toLowerCase().includes(q) ||
         sub.code.toLowerCase().includes(q) ||
-        sub.description.toLowerCase().includes(q) ||
-        (sub.tags || []).some(t => t.toLowerCase().includes(q)) ||
+        (sub.description || "").toLowerCase().includes(q) ||
         sub.links.some(l => l.title.toLowerCase().includes(q));
 
       return matchCat && matchSearch;
@@ -346,13 +351,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (filtered.length === 0) {
       subjectsGrid.innerHTML = `
-        <div class="col-span-full ohf-surface rounded-2xl py-16 px-6 text-center max-w-md mx-auto">
-          <div class="w-11 h-11 mx-auto mb-3 rounded-xl bg-[var(--s2)] border border-[var(--line-2)] flex items-center justify-center text-xl text-[var(--tx3)]">
-            <i class="ph ph-magnifying-glass"></i>
+        <div class="col-span-full sv-surface rounded-3xl py-16 px-6 text-center max-w-md mx-auto">
+          <div class="w-12 h-12 mx-auto mb-3 rounded-2xl bg-[var(--s3)] border border-[var(--accent-32)] flex items-center justify-center text-2xl text-[var(--accent)]">
+            <i class="ph ph-books"></i>
           </div>
-          <p class="text-sm font-semibold text-[var(--tx)]">ไม่พบรายวิชาที่ค้นหา</p>
-          <p class="text-xs text-[var(--tx3)] mt-1 mb-4">เพิ่มวิชาใหม่ได้เลย หรือล้างคำค้นหา</p>
-          <button onclick="document.getElementById('open-add-subject-btn').click()" class="ohf-btn-primary h-8 px-4 rounded-lg text-xs">+ เพิ่มวิชาใหม่</button>
+          <p class="text-sm font-bold text-[var(--tx)]">ยังไม่มีรายวิชาในหมวดนี้</p>
+          <p class="text-xs text-[var(--tx3)] mt-1 mb-4">เพิ่มรายวิชาใหม่ (ใส่แค่รหัสวิชากับชื่อวิชา) เพื่อเริ่มต้นจัดเก็บลิงก์และสไลด์</p>
+          <button onclick="document.getElementById('open-add-subject-btn').click()" class="sv-btn-primary h-9 px-4 rounded-xl text-xs">+ เพิ่มวิชาใหม่</button>
         </div>
       `;
       return;
@@ -360,40 +365,37 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const resolvedCards = await Promise.all(filtered.map(async sub => {
       let previewSrc = null;
-      // Prefer first embeddable link (including upgraded HTML link!), else fallback previewUrl
       const firstEmbeddable = sub.links.find(l => l.idbKey || (!l.frameRestricted && !isLikelyRestrictedUrl(l.url)));
       if (firstEmbeddable) {
         previewSrc = await resolveResourceUrl(firstEmbeddable);
-      } else if (sub.previewIdbKey) {
-        previewSrc = await resolveResourceUrl({ idbKey: sub.previewIdbKey });
-      } else if (sub.previewUrl) {
-        previewSrc = sub.previewUrl;
       }
       return { sub, previewSrc };
     }));
 
     subjectsGrid.innerHTML = resolvedCards.map(({ sub, previewSrc }) => {
       const isFav = favorites.has(sub.id);
-      const primaryUrl = sub.links[0]?.idbKey ? "embedded-html://summary" : (sub.links[0]?.url || "ยังไม่มีลิงก์");
+      const firstLink = sub.links[0];
+      const primaryUrl = firstLink?.idbKey ? "embedded-html://summary" : (firstLink?.url || "");
 
       return `
       <article 
         onclick="openSubject('${sub.id}')"
-        class="group cursor-pointer ohf-surface rounded-2xl overflow-hidden transition-all duration-300 hover:border-[var(--line-2)] ${sub.isFeatured ? 'ring-1 ring-[var(--accent-32)]' : ''} flex flex-col justify-between"
+        class="group cursor-pointer sv-surface rounded-3xl overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-[var(--accent-32)] flex flex-col justify-between"
       >
+        <!-- TOP PREVIEW AREA -->
         <div class="relative bg-[var(--rail)] border-b border-[var(--line)]">
-          <div class="px-3 py-2 bg-[var(--rail)] border-b border-[var(--line)] flex items-center justify-between gap-2">
-            <div class="flex items-center gap-1 opacity-55">
-              <span class="w-2 h-2 rounded-full bg-[var(--tx4)]"></span>
-              <span class="w-2 h-2 rounded-full bg-[var(--tx4)]"></span>
-              <span class="w-2 h-2 rounded-full bg-[var(--tx4)]"></span>
+          <div class="px-3.5 py-2 bg-[var(--s1)]/80 border-b border-[var(--line)] flex items-center justify-between gap-2">
+            <div class="flex items-center gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-400/80"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-400/80"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400/80"></span>
             </div>
-            <div class="flex-1 mx-2 px-2 py-0.5 rounded bg-[var(--bg)] border border-[var(--line)] text-[10px] text-[var(--tx3)] truncate text-center tnum">
-              ${primaryUrl.replace(/^https?:\/\//, "").slice(0, 38)}
+            <div class="flex-1 mx-2 px-2.5 py-0.5 rounded-md bg-[var(--rail)] border border-[var(--line)] text-[10px] text-[var(--tx3)] truncate text-center tnum">
+              ${primaryUrl ? primaryUrl.replace(/^https?:\/\//, "").slice(0, 38) : `${sub.code} • ยังไม่มีลิงก์`}
             </div>
-            <span class="inline-flex items-center gap-1 text-[10px] font-medium text-[var(--tx2)]">
-              <span class="w-1.5 h-1.5 rounded-full bg-[var(--accent)]"></span>
-              <span>Live</span>
+            <span class="inline-flex items-center gap-1 text-[10px] font-semibold ${previewSrc ? 'text-emerald-500' : 'text-[var(--accent)]'}">
+              <span class="w-1.5 h-1.5 rounded-full ${previewSrc ? 'bg-emerald-500' : 'bg-[var(--accent)]'}"></span>
+              <span>${previewSrc ? 'Live' : 'Ready'}</span>
             </span>
           </div>
 
@@ -401,60 +403,64 @@ document.addEventListener("DOMContentLoaded", () => {
             ${previewSrc ? `
               <iframe src="${previewSrc}" class="preview-iframe-scale" loading="lazy" tabindex="-1" sandbox="allow-scripts allow-same-origin"></iframe>
             ` : `
-              <div class="w-full h-full flex flex-col items-center justify-center p-6 text-center bg-[var(--s1)]">
-                <div class="w-11 h-11 rounded-xl bg-[var(--s3)] border border-[var(--line-2)] flex items-center justify-center text-xl mb-2">${sub.icon || '📘'}</div>
-                <p class="text-xs font-semibold text-[var(--tx)]">${sub.title}</p>
-                <p class="text-[11px] text-[var(--tx3)] mt-1">คลิกเพื่อดูลิงก์ในวิชานี้</p>
+              <!-- Bright, Clean Subject Visual Card when no embedded HTML yet -->
+              <div class="w-full h-full p-5 flex flex-col items-center justify-center text-center bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-pink-500/10">
+                <div class="w-14 h-14 rounded-2xl bg-gradient-to-br ${sub.accent || 'from-indigo-500 to-purple-500'} flex items-center justify-center text-white text-2xl shadow-lg mb-3">
+                  ${sub.icon || '📘'}
+                </div>
+                <span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[var(--s1)] border border-[var(--line)] text-[var(--accent)] mb-1.5 tnum">${sub.code}</span>
+                <p class="text-xs font-semibold text-[var(--tx)] line-clamp-1 max-w-[240px]">${firstLink ? firstLink.title : sub.title}</p>
+                <p class="text-[11px] text-[var(--tx3)] mt-1">${firstLink ? 'กดเข้าวิชาเพื่อเปิดอ่านหรือวางโค้ด HTML' : 'คลิกเพื่อเพิ่มลิงก์หรือสไลด์ PDF'}</p>
               </div>
             `}
-            <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-end justify-center p-3.5" style="background: linear-gradient(to top, rgba(10,10,11,0.82) 0%, rgba(10,10,11,0.18) 55%, transparent 100%);">
-              <span class="ohf-btn-primary h-8 px-3.5 rounded-lg text-xs flex items-center gap-1.5 shadow-lg">
-                <span>เข้าสู่วิชา (${sub.links.length} ลิงก์ • ${sub.slides.length} สไลด์)</span>
+
+            <div class="absolute inset-0 bg-slate-900/55 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
+              <span class="sv-btn-primary h-9 px-4 rounded-xl text-xs flex items-center gap-1.5 shadow-xl transform translate-y-2 group-hover:translate-y-0 transition-transform duration-200">
+                <span>เปิดอ่านวิชานี้</span>
                 <i class="ph ph-arrow-right"></i>
               </span>
             </div>
           </div>
         </div>
 
-        <div class="p-4 flex-1 flex flex-col justify-between gap-3">
+        <!-- BOTTOM METADATA + VISIBLE DELETE BUTTON -->
+        <div class="p-4 sm:p-5 flex-1 flex flex-col justify-between gap-3">
           <div class="space-y-2.5">
             <div class="flex items-center justify-between gap-2">
               <div class="flex items-center gap-2 tnum">
-                <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${sub.isFeatured ? 'bg-[var(--accent-08)] text-[var(--accent)] border border-[var(--accent-32)]' : 'bg-[var(--s3)] text-[var(--tx2)] border border-[var(--line)]'}">
+                <span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-[var(--accent-08)] text-[var(--accent)] border border-[var(--accent-32)]">
                   ${sub.code}
                 </span>
-                <span class="text-[11px] text-[var(--tx3)]">${sub.category}</span>
+                <span class="text-[11px] text-[var(--tx3)]">${sub.category || 'ทั่วไป'}</span>
               </div>
-              <div class="flex items-center gap-0.5">
-                <button onclick="event.stopPropagation(); toggleFavorite('${sub.id}')" class="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-[var(--s3)] transition-colors ${isFav ? 'text-[var(--accent)]' : 'text-[var(--tx4)] hover:text-[var(--tx2)]'}" title="ติดดาว">
+              <div class="flex items-center gap-1">
+                <button onclick="event.stopPropagation(); toggleFavorite('${sub.id}')" class="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-[var(--s3)] transition-colors ${isFav ? 'text-amber-400' : 'text-[var(--tx4)] hover:text-amber-400'}" title="ติดดาว">
                   <i class="ph ${isFav ? 'ph-star-fill' : 'ph-star'} text-sm"></i>
                 </button>
-                <button onclick="event.stopPropagation(); deleteSubject('${sub.id}')" class="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx4)] hover:text-[var(--danger)] hover:bg-[var(--danger-bg)] opacity-60 group-hover:opacity-100 transition-all" title="ลบวิชานี้">
-                  <i class="ph ph-trash text-sm"></i>
+                <button onclick="event.stopPropagation(); deleteSubject('${sub.id}')" class="h-7 px-2 rounded-lg flex items-center gap-1 text-[11px] font-medium text-[var(--danger)] bg-[var(--danger-bg)] hover:opacity-80 transition-opacity" title="ลบวิชานี้">
+                  <i class="ph ph-trash text-xs"></i>
+                  <span>ลบ</span>
                 </button>
               </div>
             </div>
 
-            <div class="flex items-start gap-2.5">
-              <div class="w-9 h-9 rounded-xl bg-[var(--s2)] border border-[var(--line-2)] flex items-center justify-center text-[var(--tx)] text-base flex-shrink-0">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-gradient-to-br ${sub.accent || 'from-indigo-500 to-purple-500'} flex items-center justify-center text-white text-lg shadow-sm flex-shrink-0">
                 ${sub.icon || '📘'}
               </div>
-              <div>
-                ${sub.isFeatured ? `<span class="inline-flex items-center gap-1 text-[10px] font-medium text-[var(--accent)] mb-0.5"><span class="w-1 h-1 rounded-full bg-[var(--accent)]"></span> วิชาเด่น</span>` : ''}
-                <h3 class="font-semibold text-sm text-[var(--tx)] group-hover:text-[var(--accent)] transition-colors leading-snug">${sub.title}</h3>
-              </div>
+              <h3 class="font-bold text-base text-[var(--tx)] group-hover:text-[var(--accent)] transition-colors leading-snug line-clamp-2">
+                ${sub.title}
+              </h3>
             </div>
-
-            <p class="text-xs text-[var(--tx3)] leading-relaxed line-clamp-2">${sub.description}</p>
           </div>
 
           <div class="pt-3 border-t border-[var(--line)] flex items-center justify-between gap-2 tnum">
             <div class="flex items-center gap-3 text-[11px] text-[var(--tx2)]">
-              <span class="flex items-center gap-1"><i class="ph ph-link-simple text-[var(--accent)]"></i> ${String(sub.links.length).padStart(2, "0")} ลิงก์</span>
-              <span class="flex items-center gap-1"><i class="ph ph-presentation-chart text-[var(--tx3)]"></i> ${String(sub.slides.length).padStart(2, "0")} สไลด์</span>
+              <span class="flex items-center gap-1"><i class="ph ph-link-simple text-[var(--accent)]"></i> ${sub.links.length} ลิงก์</span>
+              <span class="flex items-center gap-1"><i class="ph ph-presentation-chart text-pink-500"></i> ${sub.slides.length} สไลด์</span>
             </div>
-            <span class="text-[11px] font-medium text-[var(--tx3)] group-hover:text-[var(--tx)] flex items-center gap-1">
-              <span>เปิดดู</span><i class="ph ph-caret-right"></i>
+            <span class="text-xs font-semibold text-[var(--accent)] flex items-center gap-1">
+              <span>เข้าดูวิชา</span><i class="ph ph-caret-right"></i>
             </span>
           </div>
         </div>
@@ -465,7 +471,38 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".card-preview-box").forEach(box => previewResizeObserver.observe(box));
   }
 
-  // 4. Delete Subject + Undo
+  // 4. Delete Subject + Manage Subjects List + Undo
+  function renderManageSubjectsList() {
+    if (!manageSubjectsList) return;
+    manageSubjectsCount.textContent = `${allSubjects.length} วิชา`;
+
+    if (allSubjects.length === 0) {
+      manageSubjectsList.innerHTML = `<p class="text-center py-4 text-[var(--tx3)]">ยังไม่มีรายวิชาในคลัง</p>`;
+      return;
+    }
+
+    manageSubjectsList.innerHTML = allSubjects.map(sub => `
+      <div class="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-[var(--rail)] border border-[var(--line)]">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-7 h-7 rounded-lg bg-gradient-to-br ${sub.accent || 'from-indigo-500 to-purple-500'} text-white flex items-center justify-center text-xs flex-shrink-0">
+            ${sub.icon || '📘'}
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-bold text-[var(--accent)] tnum">${sub.code}</span>
+              <span class="text-xs font-semibold text-[var(--tx)] truncate">${sub.title}</span>
+            </div>
+            <span class="text-[10px] text-[var(--tx3)]">${sub.links.length} ลิงก์ • ${sub.slides.length} สไลด์</span>
+          </div>
+        </div>
+        <button onclick="deleteSubject('${sub.id}')" class="px-2.5 py-1 rounded-lg bg-[var(--danger-bg)] text-[var(--danger)] hover:opacity-80 font-medium text-[11px] flex items-center gap-1 flex-shrink-0 transition">
+          <i class="ph ph-trash"></i>
+          <span>ลบวิชา</span>
+        </button>
+      </div>
+    `).join("");
+  }
+
   window.deleteSubject = function(subjectId) {
     const sub = allSubjects.find(s => s.id === subjectId);
     if (!sub) return;
@@ -479,10 +516,18 @@ document.addEventListener("DOMContentLoaded", () => {
       deletedSubjectIds.add(subjectId);
     }
 
+    if (lockedSubjectId === subjectId) {
+      lockedSubjectId = "";
+      localStorage.removeItem(LS_LOCKED_SUBJECT);
+    }
+
     saveState();
     allSubjects = getMergedSubjects();
     updateStats();
     renderCategories();
+    renderManageSubjectsList();
+    syncSubjectSelects();
+
     if (activeSubjectId === subjectId) navigateHome();
     else renderSubjectsGrid();
 
@@ -493,6 +538,8 @@ document.addEventListener("DOMContentLoaded", () => {
       allSubjects = getMergedSubjects();
       updateStats();
       renderCategories();
+      renderManageSubjectsList();
+      syncSubjectSelects();
       renderSubjectsGrid();
     });
   };
@@ -505,12 +552,12 @@ document.addEventListener("DOMContentLoaded", () => {
     activeSubjectId = subjectId;
     if (updateHash) window.location.hash = `subject/${subjectId}`;
 
+    wsIcon.className = `w-9 h-9 rounded-xl bg-gradient-to-br ${sub.accent || 'from-indigo-500 to-purple-500'} flex items-center justify-center text-white text-base shadow-sm flex-shrink-0`;
     wsIcon.innerHTML = sub.icon || "📘";
     wsCode.textContent = sub.code;
-    wsCategory.textContent = sub.category;
+    wsCategory.textContent = sub.category || "ทั่วไป";
     wsTitle.textContent = sub.title;
-    wsDesc.textContent = sub.description;
-    wsTags.innerHTML = (sub.tags || []).map(t => `<span class="text-[10px] px-2 py-0.5 rounded bg-[var(--s2)] text-[var(--tx2)] border border-[var(--line)]">#${t}</span>`).join("");
+    wsDesc.textContent = sub.description || `คลังสรุปและสไลด์เรียนวิชา ${sub.title}`;
     wsDeleteSubjectBtn.onclick = () => deleteSubject(subjectId);
 
     updateWorkspaceStar();
@@ -554,7 +601,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function updateWorkspaceStar() {
     const isFav = favorites.has(activeSubjectId);
-    wsStarBtn.innerHTML = `<i class="ph ${isFav ? 'ph-star-fill text-[var(--accent)]' : 'ph-star'} text-base"></i>`;
+    wsStarBtn.innerHTML = `<i class="ph ${isFav ? 'ph-star-fill text-amber-400' : 'ph-star'} text-sm"></i>`;
   }
   wsStarBtn.addEventListener("click", () => {
     if (activeSubjectId) {
@@ -567,16 +614,16 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderWorkspaceLinks(sub) {
     wsLinksCount.textContent = String(sub.links.length).padStart(2, "0");
 
-    splitLinkSelect.innerHTML = sub.links.map((l, i) =>
-      `<option value="${l.id}" ${l.id === activeLinkId ? "selected" : ""}>${String(i + 1).padStart(2, "0")}. ${l.title}</option>`
-    ).join("");
-    splitLinkSelect.onchange = e => selectLink(e.target.value);
+    splitLinkSelect.innerHTML = sub.links.length
+      ? sub.links.map((l, i) => `<option value="${l.id}" ${l.id === activeLinkId ? "selected" : ""}>${String(i + 1).padStart(2, "0")}. ${l.title}</option>`).join("")
+      : `<option value="">ยังไม่มีลิงก์</option>`;
+    splitLinkSelect.onchange = e => { if (e.target.value) selectLink(e.target.value); };
 
     if (sub.links.length === 0) {
       wsLinksList.innerHTML = `
-        <div class="ohf-rail p-4 rounded-xl text-center space-y-2">
+        <div class="sv-rail p-4 rounded-xl text-center space-y-2">
           <p class="text-xs text-[var(--tx3)]">ยังไม่มีลิงก์บทเรียน</p>
-          <button onclick="openAddLinkModal()" class="text-xs text-[var(--accent)] font-medium hover:underline">+ เพิ่มลิงก์แรก</button>
+          <button onclick="openAddLinkModal()" class="text-xs text-[var(--accent)] font-semibold hover:underline">+ เพิ่มลิงก์แรก</button>
         </div>
       `;
       return;
@@ -595,17 +642,17 @@ document.addEventListener("DOMContentLoaded", () => {
               : "bg-[var(--s1)] border-[var(--line)] hover:border-[var(--line-2)] hover:bg-[var(--s2)]"
           }"
         >
-          <span class="tnum w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-semibold flex-shrink-0 ${
-            isSelected ? "bg-[var(--accent)] text-[var(--accent-ink)]" : "bg-[var(--s3)] text-[var(--tx3)]"
+          <span class="tnum w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
+            isSelected ? "bg-[var(--accent)] text-white" : "bg-[var(--rail)] text-[var(--tx3)]"
           }">${num}</span>
 
           <div class="flex-1 min-w-0">
             <div class="flex items-center justify-between gap-1 mb-1">
-              <span class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-[var(--s2)] text-[var(--tx2)] border border-[var(--line)]">
-                ${link.badge || link.type || "สรุป"}
+              <span class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-[var(--rail)] text-[var(--tx2)] border border-[var(--line)]">
+                ${link.badge || link.type || "Web"}
               </span>
               <div class="flex items-center gap-0.5">
-                <button onclick="event.stopPropagation(); openEditLinkModal('${link.id}')" class="text-[var(--tx4)] hover:text-[var(--accent)] p-1 rounded opacity-60 group-hover:opacity-100 transition-all" title="แก้ไข / วางโค้ด HTML">
+                <button onclick="event.stopPropagation(); openEditLinkModal('${link.id}')" class="text-[var(--tx3)] hover:text-[var(--accent)] p-1 rounded transition-colors" title="แก้ไข / วางโค้ด HTML">
                   <i class="ph ph-pencil-simple text-xs"></i>
                 </button>
                 ${link.url ? `
@@ -613,13 +660,13 @@ document.addEventListener("DOMContentLoaded", () => {
                     <i class="ph ph-arrow-square-out text-xs"></i>
                   </a>
                 ` : ''}
-                <button onclick="event.stopPropagation(); deleteLink('${link.id}')" class="text-[var(--tx4)] hover:text-[var(--danger)] p-1 rounded opacity-60 group-hover:opacity-100 transition-all" title="ลบลิงก์นี้">
+                <button onclick="event.stopPropagation(); deleteLink('${link.id}')" class="text-[var(--danger)] hover:opacity-80 p-1 rounded transition-opacity" title="ลบลิงก์นี้">
                   <i class="ph ph-trash text-xs"></i>
                 </button>
               </div>
             </div>
 
-            <h4 class="text-xs font-semibold ${isSelected ? 'text-[var(--tx)]' : 'text-[var(--tx2)] group-hover:text-[var(--tx)]'} leading-snug">${link.title}</h4>
+            <h4 class="text-xs font-semibold ${isSelected ? 'text-[var(--accent)]' : 'text-[var(--tx)]'} leading-snug">${link.title}</h4>
             ${link.subtitle ? `<p class="text-[11px] text-[var(--tx3)] mt-1 line-clamp-2">${link.subtitle}</p>` : ''}
           </div>
         </div>
@@ -673,7 +720,7 @@ document.addEventListener("DOMContentLoaded", () => {
     stageExternalBtn.classList.add("hidden");
   }
 
-  // 7. Select Link + Smart Embedding & Timeout Guard
+  // 7. Select Link + Smart Embedding
   window.selectLink = async function(linkId) {
     const sub = allSubjects.find(s => s.id === activeSubjectId);
     if (!sub) return;
@@ -698,18 +745,12 @@ document.addEventListener("DOMContentLoaded", () => {
       stageIframeWrapper.classList.add("hidden");
       stageRestrictedView.classList.remove("hidden");
 
+      restrictedAppIcon.className = `w-9 h-9 rounded-xl bg-gradient-to-br ${sub.accent || 'from-indigo-500 to-purple-500'} flex items-center justify-center text-white text-sm shadow-sm`;
       restrictedAppIcon.innerHTML = sub.icon || "📘";
       restrictedAppTitle.textContent = sub.code + " • " + sub.title;
-      restrictedAppSubtitle.textContent = link.subtitle || "Web Dev Deploy";
+      restrictedAppSubtitle.textContent = link.subtitle || "Web App";
       restrictedLinkName.textContent = link.title;
       restrictedOpenBtn.href = resolvedUrl;
-
-      if (link.localPreviewFallback) {
-        restrictedFallbackBtn.classList.remove("hidden");
-        restrictedFallbackBtn.onclick = () => loadStageIframe(link.localPreviewFallback);
-      } else {
-        restrictedFallbackBtn.classList.add("hidden");
-      }
     } else {
       loadStageIframe(resolvedUrl);
     }
@@ -729,36 +770,30 @@ document.addEventListener("DOMContentLoaded", () => {
       stageLoader.classList.add("hidden");
     };
 
-    // Timeout guard if external site stalls or silently fails to render in frame
     iframeTimeoutHandle = setTimeout(() => {
       stageLoader.classList.add("hidden");
-      if (url.startsWith("http")) {
-        stageTimeoutBar.classList.remove("hidden");
-      }
+      if (url.startsWith("http")) stageTimeoutBar.classList.remove("hidden");
     }, 6500);
   }
 
-  // Dual Desktop Side-by-Side Window Launcher (External Web Left + StudyVault Slides Right)
   window.openDualDesktopWindows = function() {
     const sub = allSubjects.find(s => s.id === activeSubjectId);
     const link = sub?.links.find(l => l.id === activeLinkId);
     if (!link) return;
 
-    const targetUrl = link.url;
     const availW = window.screen.availWidth || 1280;
     const availH = window.screen.availHeight || 800;
     const halfW = Math.floor(availW / 2);
 
-    if (targetUrl) {
+    if (link.url) {
       window.open(
-        targetUrl,
+        link.url,
         "studyvault_external_web",
         `left=0,top=0,width=${halfW},height=${availH},resizable=yes,scrollbars=yes`
       );
     }
-    // Switch current StudyVault window into Split or Slide Popout focus
     if (!isSplitMode) toggleSplitMode(true);
-    showToast("เปิดเว็บไว้ด้านซ้ายแล้ว — จัดหน้าต่างนี้ไว้ครึ่งขวาเพื่อดูสไลด์คู่กันได้เลย");
+    showToast("เปิดเว็บไว้ด้านซ้ายแล้ว ดูคู่กับสไลด์ฝั่งขวาได้เลย");
   };
 
   window.popoutSlideWindow = function() {
@@ -775,16 +810,14 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   stageRefreshBtn.addEventListener("click", () => {
-    if (!stageIframeWrapper.classList.contains("hidden")) {
-      loadStageIframe(stageIframe.src);
-    }
+    if (!stageIframeWrapper.classList.contains("hidden")) loadStageIframe(stageIframe.src);
   });
 
   window.setViewport = function(mode) {
     ["desktop", "tablet", "mobile"].forEach(m => {
       const btn = document.getElementById("vp-" + m);
       btn.className = m === mode
-        ? "px-2 py-1 rounded-md bg-[var(--s3)] text-[var(--tx)] transition-colors"
+        ? "px-2 py-1 rounded-md bg-[var(--s3)] text-[var(--accent)] transition-colors"
         : "px-2 py-1 rounded-md text-[var(--tx3)] hover:text-[var(--tx)] transition-colors";
     });
     if (mode === "desktop") {
@@ -830,7 +863,7 @@ document.addEventListener("DOMContentLoaded", () => {
     wsSlidesBadge.textContent = sub ? sub.slides.length : 0;
 
     if (isSplitMode) {
-      wsSplitToggleBtn.className = "ohf-btn-primary h-8 px-3 rounded-xl text-xs flex items-center gap-1.5 transition-all";
+      wsSplitToggleBtn.className = "sv-btn-primary h-8 px-3 rounded-xl text-xs flex items-center gap-1.5 transition-all";
       wsSwapSidesBtn.classList.remove("hidden");
       wsSwapSidesBtn.classList.add("flex");
       wsSidebar.classList.add("hidden");
@@ -839,7 +872,6 @@ document.addEventListener("DOMContentLoaded", () => {
       wsSlidePane.classList.remove("hidden");
       wsSlidePane.classList.add("flex");
 
-      // Order panes according to swap setting
       wsWebPane.style.order = isSwappedSides ? "3" : "1";
       splitResizer.style.order = "2";
       wsSlidePane.style.order = isSwappedSides ? "1" : "3";
@@ -853,7 +885,7 @@ document.addEventListener("DOMContentLoaded", () => {
         wsSlidePane.style.flex = `1 1 ${100 - leftVal}%`;
       }
     } else {
-      wsSplitToggleBtn.className = "ohf-surface h-8 px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all text-[var(--tx)]";
+      wsSplitToggleBtn.className = "sv-surface h-8 px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all text-[var(--tx)]";
       wsSwapSidesBtn.classList.add("hidden");
       wsSwapSidesBtn.classList.remove("flex");
       wsSidebar.classList.remove("hidden");
@@ -901,7 +933,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // =========================================================================
-  // 9. LECTURE SLIDE READER + DRAG & DROP + ZOOM
+  // 9. GOODNOTES-STYLE PDF STUDIO READER + ANNOTATIONS + SLIDES
   // =========================================================================
   function renderWorkspaceSlides(sub) {
     wsSlidesCount.textContent = String(sub.slides.length).padStart(2, "0");
@@ -913,7 +945,7 @@ document.addEventListener("DOMContentLoaded", () => {
     slideDeckSelect.onchange = e => { if (e.target.value) selectSlide(e.target.value, false); };
 
     if (sub.slides.length === 0) {
-      wsSlidesList.innerHTML = `<div class="ohf-rail p-3 rounded-xl text-center"><p class="text-[11px] text-[var(--tx3)]">แนบ PDF, รูปภาพ หรือ Google Slides เพื่ออ่านเทียบข้างๆ</p></div>`;
+      wsSlidesList.innerHTML = `<div class="sv-rail p-3 rounded-xl text-center"><p class="text-[11px] text-[var(--tx3)]">ยังไม่มีสไลด์เรียนในวิชานี้</p></div>`;
       return;
     }
 
@@ -926,7 +958,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <i class="ph ${iconClass} text-sm ${isSelected ? 'text-[var(--accent)]' : 'text-[var(--tx3)]'} flex-shrink-0"></i>
             <span class="text-xs font-medium text-[var(--tx)] truncate">${sl.title}</span>
           </div>
-          <button onclick="event.stopPropagation(); deleteSlide('${sl.id}')" class="text-[var(--tx4)] hover:text-[var(--danger)] p-1 opacity-60 group-hover:opacity-100 transition" title="ลบสไลด์">
+          <button onclick="event.stopPropagation(); deleteSlide('${sl.id}')" class="text-[var(--danger)] hover:opacity-80 p-1 transition" title="ลบสไลด์">
             <i class="ph ph-trash text-xs"></i>
           </button>
         </div>
@@ -950,7 +982,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return url;
   }
 
-  // PDF.js + GoodNotes Annotation Studio Engine
+  // GoodNotes PDF Engine
   let activePdfDoc = null;
   let activePdfBlob = null;
   let activePdfSlideId = null;
@@ -962,15 +994,14 @@ document.addEventListener("DOMContentLoaded", () => {
   let pdfResizeTimer = null;
   let pdfScrollRaf = null;
 
-  // GoodNotes Pen / Highlighter / Eraser State
-  let activePdfTool = "pan"; // "pan" | "pen" | "highlighter" | "eraser"
+  let activePdfTool = "pan";
   let pdfPenColor = "#38bdf8";
   let pdfPenSize = 4;
   let pdfHighlightColor = "#facc15";
   let pdfHighlightSize = 18;
-  let pdfAnnotations = {}; // pageNumStr -> Stroke[]
-  let pdfUndoStacks = {};  // pageNumStr -> Stroke[][]
-  let pdfRedoStacks = {};  // pageNumStr -> Stroke[][]
+  let pdfAnnotations = {};
+  let pdfUndoStacks = {};
+  let pdfRedoStacks = {};
 
   const pdfColorPicker = document.getElementById("pdf-color-picker");
   const pdfSizeSlider = document.getElementById("pdf-size-slider");
@@ -1005,7 +1036,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const btn = document.getElementById("pdf-tool-" + t);
       if (!btn) return;
       if (t === tool) {
-        btn.className = "h-7 px-2 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] font-semibold flex items-center gap-1 transition";
+        btn.className = "h-7 px-2 rounded-md bg-[var(--accent)] text-white font-semibold flex items-center gap-1 transition";
       } else {
         btn.className = "h-7 px-2 rounded-md text-[var(--tx3)] hover:text-[var(--tx)] flex items-center gap-1 transition";
       }
@@ -1021,17 +1052,13 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   window.setPdfColor = function(hex) {
-    if (activePdfTool === "pan" || activePdfTool === "eraser") {
-      setPdfTool("pen");
-    }
+    if (activePdfTool === "pan" || activePdfTool === "eraser") setPdfTool("pen");
     if (activePdfTool === "highlighter") pdfHighlightColor = hex;
     else pdfPenColor = hex;
     syncAnnotationControls();
   };
 
-  if (pdfColorPicker) {
-    pdfColorPicker.addEventListener("input", e => setPdfColor(e.target.value));
-  }
+  if (pdfColorPicker) pdfColorPicker.addEventListener("input", e => setPdfColor(e.target.value));
   if (pdfSizeSlider) {
     pdfSizeSlider.addEventListener("input", e => {
       const val = Number(e.target.value);
@@ -1101,9 +1128,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const h = inkCanvas.height;
     ctx.clearRect(0, 0, w, h);
     const list = pdfAnnotations[pageKey] || [];
-    for (const stroke of list) {
-      drawStrokeOnCtx(ctx, stroke, w, h);
-    }
+    for (const stroke of list) drawStrokeOnCtx(ctx, stroke, w, h);
   }
 
   function redrawVisiblePageInk(pageNum) {
@@ -1297,16 +1322,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const pdfPage = pdfDoc.getPage(i - 1);
         const { width, height } = pdfPage.getSize();
-        const scale = 2; // HiDPI 2x overlay canvas
+        const scale = 2;
 
         const offCanvas = document.createElement("canvas");
         offCanvas.width = Math.max(1, Math.floor(width * scale));
         offCanvas.height = Math.max(1, Math.floor(height * scale));
         const ctx = offCanvas.getContext("2d");
 
-        for (const stroke of strokes) {
-          drawStrokeOnCtx(ctx, stroke, offCanvas.width, offCanvas.height);
-        }
+        for (const stroke of strokes) drawStrokeOnCtx(ctx, stroke, offCanvas.width, offCanvas.height);
 
         const pngBlob = await new Promise(res => offCanvas.toBlob(res, "image/png"));
         const pngBytes = await pngBlob.arrayBuffer();
@@ -1379,7 +1402,6 @@ document.addEventListener("DOMContentLoaded", () => {
     pdfUndoStacks = {};
     pdfRedoStacks = {};
 
-    // Load saved GoodNotes annotations for this slide
     try {
       const savedAnnot = await StudyVaultDB.getBlob("annot-" + slideId);
       pdfAnnotations = (savedAnnot && typeof savedAnnot === "object") ? savedAnnot : {};
@@ -1441,7 +1463,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const vp = page ? page.getViewport({ scale: fitScale }) : { width: baseVp.width * fitScale, height: baseVp.height * fitScale };
 
       const wrap = document.createElement("div");
-      wrap.className = "pdf-page-slot relative rounded-lg overflow-hidden bg-white shadow-lg border border-[var(--line)] flex-shrink-0";
+      wrap.className = "pdf-page-slot relative rounded-xl overflow-hidden bg-white shadow-md border border-[var(--line)] flex-shrink-0";
       wrap.style.width = `${Math.floor(vp.width)}px`;
       wrap.style.height = `${Math.floor(vp.height)}px`;
       wrap.dataset.pageNum = String(i);
@@ -1497,7 +1519,6 @@ document.addEventListener("DOMContentLoaded", () => {
     bgCanvas.style.display = "block";
     bgCanvas.style.pointerEvents = "none";
 
-    // Transparent GoodNotes Ink Layer
     const inkCanvas = document.createElement("canvas");
     inkCanvas.className = "pdf-ink-canvas absolute inset-0 w-full h-full z-10";
     inkCanvas.width = Math.floor(vp.width);
@@ -1593,7 +1614,7 @@ document.addEventListener("DOMContentLoaded", () => {
     updateImageSlideView();
   };
 
-  // Drag & Drop PDF or Image Slides straight onto the Slide Pane
+  // Drag & Drop PDF or Images into Slide Pane
   ["dragenter", "dragover"].forEach(ev => {
     slideDropZone.addEventListener(ev, e => {
       e.preventDefault();
@@ -1679,78 +1700,42 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   // =========================================================================
-  // 10. MODALS: ADD SUBJECT, ADD/EDIT LINK (WITH HTML UPGRADE), ADD SLIDE
+  // 10. MODALS: SIMPLIFIED ADD/MANAGE SUBJECT & SUBJECT-LOCKED UPLOAD
   // =========================================================================
-  window.setSubSourceMode = function(mode) {
-    subSourceMode = mode;
-    document.getElementById("sub-mode-url").className = mode === "url" ? "px-2 py-0.5 rounded bg-[var(--s3)] text-[var(--tx)] text-[11px]" : "px-2 py-0.5 rounded text-[var(--tx3)] text-[11px]";
-    document.getElementById("sub-mode-html").className = mode === "html" ? "px-2 py-0.5 rounded bg-[var(--s3)] text-[var(--tx)] text-[11px]" : "px-2 py-0.5 rounded text-[var(--tx3)] text-[11px]";
-    document.getElementById("sub-url-group").classList.toggle("hidden", mode !== "url");
-    document.getElementById("sub-html-group").classList.toggle("hidden", mode !== "html");
-  };
-
-  window.setLnkSourceMode = function(mode) {
-    lnkSourceMode = mode;
-    document.getElementById("lnk-mode-url").className = mode === "url" ? "px-2 py-0.5 rounded bg-[var(--s3)] text-[var(--tx)] text-[11px]" : "px-2 py-0.5 rounded text-[var(--tx3)] text-[11px]";
-    document.getElementById("lnk-mode-html").className = mode === "html" ? "px-2 py-0.5 rounded bg-[var(--s3)] text-[var(--tx)] text-[11px]" : "px-2 py-0.5 rounded text-[var(--tx3)] text-[11px]";
-    document.getElementById("lnk-url-group").classList.toggle("hidden", mode !== "url");
-    document.getElementById("lnk-html-group").classList.toggle("hidden", mode !== "html");
-  };
-
-  document.getElementById("sub-html-file").addEventListener("change", async e => {
-    const file = e.target.files[0];
-    if (file) document.getElementById("sub-html-code").value = await file.text();
-  });
-  document.getElementById("lnk-html-file").addEventListener("change", async e => {
-    const file = e.target.files[0];
-    if (file) document.getElementById("lnk-html-code").value = await file.text();
-  });
+  const SUBJECT_ACCENTS = [
+    "from-indigo-500 to-purple-500",
+    "from-pink-500 to-rose-500",
+    "from-sky-500 to-cyan-500",
+    "from-emerald-500 to-teal-500",
+    "from-amber-500 to-orange-500"
+  ];
 
   document.getElementById("open-add-subject-btn").addEventListener("click", () => {
+    renderManageSubjectsList();
     addSubjectModal.classList.remove("hidden");
-    document.getElementById("sub-code-box").classList.add("hidden");
   });
   window.closeAddSubjectModal = () => addSubjectModal.classList.add("hidden");
 
-  document.getElementById("add-subject-form").addEventListener("submit", async e => {
+  document.getElementById("add-subject-form").addEventListener("submit", e => {
     e.preventDefault();
     const code = document.getElementById("sub-code").value.trim();
     const title = document.getElementById("sub-title").value.trim();
-    const category = document.getElementById("sub-category").value.trim();
+    const category = document.getElementById("sub-category").value.trim() || "ทั่วไป";
     const icon = document.getElementById("sub-icon").value.trim() || "📘";
-    const linkTitle = document.getElementById("sub-link-title").value.trim();
-    const desc = document.getElementById("sub-desc").value.trim();
     const today = new Date().toISOString().split("T")[0];
     const id = "sub-" + Date.now();
-    const linkId = "lnk-" + Date.now();
-
-    let url = "", idbKey = null, previewUrl = "", previewIdbKey = null;
-
-    if (subSourceMode === "html") {
-      const htmlCode = document.getElementById("sub-html-code").value.trim();
-      if (!htmlCode) { showToast("กรุณาเลือกไฟล์ HTML หรือวางโค้ดเว็บก่อนบันทึก"); return; }
-      idbKey = "html-" + Date.now();
-      await StudyVaultDB.setBlob(idbKey, new Blob([htmlCode], { type: "text/html" }));
-      previewIdbKey = idbKey;
-    } else {
-      url = document.getElementById("sub-link-url").value.trim();
-      if (!url) { showToast("กรุณากรอกลิงก์ URL เว็บสรุป"); return; }
-      previewUrl = isLikelyRestrictedUrl(url) ? "" : url;
-    }
+    const accent = SUBJECT_ACCENTS[allSubjects.length % SUBJECT_ACCENTS.length];
 
     const newSub = {
-      id, code, title, category,
-      description: desc || `คลังสรุปและบทเรียนวิชา ${title}`,
-      tags: [category, code],
-      icon, previewUrl, previewIdbKey, lastUpdated: today,
-      links: [{
-        id: linkId, title: linkTitle, subtitle: "ลิงก์สรุปบทเรียน",
-        type: idbKey ? "Embedded HTML" : "Web Dev",
-        url, idbKey,
-        badge: idbKey ? "HTML ในตัว" : "ใหม่",
-        frameRestricted: !idbKey && isLikelyRestrictedUrl(url),
-        updatedAt: today
-      }],
+      id,
+      code,
+      title,
+      category,
+      description: `คลังสรุปและสไลด์เรียนวิชา ${title}`,
+      icon,
+      accent,
+      lastUpdated: today,
+      links: [],
       slides: []
     };
 
@@ -1759,32 +1744,14 @@ document.addEventListener("DOMContentLoaded", () => {
     allSubjects = getMergedSubjects();
     updateStats();
     renderCategories();
-    navigateHome();
-    closeAddSubjectModal();
+    renderManageSubjectsList();
+    syncSubjectSelects(newSub.id);
+    if (!viewHome.classList.contains("hidden")) renderSubjectsGrid();
     e.target.reset();
-    showToast(`เพิ่มวิชา "${title}" พร้อมหน้าพรีวิวแล้ว`);
+    showToast(`เพิ่มวิชา "${code} — ${title}" แล้ว กดเพิ่มลิงก์หรือสไลด์ได้เลย`);
   });
 
-  document.getElementById("sub-copy-btn").addEventListener("click", () => {
-    const obj = {
-      id: "sub-" + Date.now(),
-      code: document.getElementById("sub-code").value.trim(),
-      title: document.getElementById("sub-title").value.trim(),
-      category: document.getElementById("sub-category").value.trim(),
-      description: document.getElementById("sub-desc").value.trim(),
-      icon: document.getElementById("sub-icon").value.trim() || "📘",
-      previewUrl: document.getElementById("sub-link-url").value.trim(),
-      lastUpdated: new Date().toISOString().split("T")[0],
-      links: [{ id: "lnk-" + Date.now(), title: document.getElementById("sub-link-title").value.trim(), url: document.getElementById("sub-link-url").value.trim(), type: "Web Dev", badge: "ใหม่" }],
-      slides: []
-    };
-    const formatted = JSON.stringify(obj, null, 2);
-    document.getElementById("sub-code-box").classList.remove("hidden");
-    document.getElementById("sub-code-pre").textContent = formatted;
-    navigator.clipboard.writeText(formatted + ",").then(() => showToast("คัดลอกโค้ดสำหรับ data.js แล้ว"));
-  });
-
-  // Subject Selector + Lock Management (Shared across Add Link & Add Slide modals)
+  // Subject Lock Helpers
   const lnkSubjectSelect = document.getElementById("lnk-subject-select");
   const slSubjectSelect = document.getElementById("sl-subject-select");
   const lnkLockBtn = document.getElementById("lnk-lock-btn");
@@ -1808,10 +1775,10 @@ document.addEventListener("DOMContentLoaded", () => {
     [lnkLockBtn, slLockBtn].forEach(btn => {
       if (!btn) return;
       if (isLocked) {
-        btn.className = "px-2 py-0.5 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] font-semibold text-[11px] flex items-center gap-1 transition";
+        btn.className = "px-2.5 py-0.5 rounded-md bg-[var(--accent)] text-white font-semibold text-[11px] flex items-center gap-1 transition";
         btn.innerHTML = `<i class="ph ph-lock"></i><span>ล็อควิชาไว้แล้ว</span>`;
       } else {
-        btn.className = "px-2 py-0.5 rounded-md border border-[var(--line-2)] bg-[var(--s2)] text-[var(--tx2)] text-[11px] flex items-center gap-1 transition";
+        btn.className = "px-2.5 py-0.5 rounded-md border border-[var(--line-2)] bg-[var(--s1)] text-[var(--tx2)] text-[11px] flex items-center gap-1 transition";
         btn.innerHTML = `<i class="ph ph-lock-open"></i><span>ล็อควิชานี้ไว้</span>`;
       }
     });
@@ -1832,22 +1799,38 @@ document.addEventListener("DOMContentLoaded", () => {
     syncSubjectSelects();
   };
 
+  window.setLnkSourceMode = function(mode) {
+    lnkSourceMode = mode;
+    document.getElementById("lnk-mode-url").className = mode === "url" ? "px-2.5 py-0.5 rounded bg-[var(--accent)] text-white text-[11px] font-medium" : "px-2.5 py-0.5 rounded text-[var(--tx3)] text-[11px]";
+    document.getElementById("lnk-mode-html").className = mode === "html" ? "px-2.5 py-0.5 rounded bg-[var(--accent)] text-white text-[11px] font-medium" : "px-2.5 py-0.5 rounded text-[var(--tx3)] text-[11px]";
+    document.getElementById("lnk-url-group").classList.toggle("hidden", mode !== "url");
+    document.getElementById("lnk-html-group").classList.toggle("hidden", mode !== "html");
+  };
+
+  document.getElementById("lnk-html-file").addEventListener("change", async e => {
+    const file = e.target.files[0];
+    if (file) document.getElementById("lnk-html-code").value = await file.text();
+  });
+
   window.openQuickSlideUpload = () => {
     if (allSubjects.length === 0) {
-      showToast("กรุณาสร้างรายวิชาก่อนเพิ่มสื่อ");
+      showToast("กรุณาสร้างรายวิชาก่อนเพิ่มลิงก์หรือสไลด์");
       document.getElementById("open-add-subject-btn").click();
       return;
     }
-    openAddSlideModal();
+    openAddLinkModal();
   };
 
-  // Add / Edit Link Modal
   window.openAddLinkModal = () => {
+    if (allSubjects.length === 0) {
+      showToast("กรุณาสร้างรายวิชาก่อน");
+      document.getElementById("open-add-subject-btn").click();
+      return;
+    }
     document.getElementById("lnk-edit-id").value = "";
     document.getElementById("lnk-modal-heading").textContent = "เพิ่มลิงก์บทเรียนเข้าวิชา";
     document.getElementById("add-link-form").reset();
     setLnkSourceMode("url");
-    document.getElementById("lnk-code-box").classList.add("hidden");
     syncSubjectSelects(activeSubjectId);
     addLinkModal.classList.remove("hidden");
   };
@@ -1864,11 +1847,8 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("lnk-title").value = link.title || "";
     document.getElementById("lnk-subtitle").value = link.subtitle || "";
     document.getElementById("lnk-url").value = link.url || "";
-    document.getElementById("lnk-type").value = link.type || "Web Summary";
-    document.getElementById("lnk-badge").value = link.badge || "ใหม่";
     document.getElementById("lnk-html-code").value = "";
     setLnkSourceMode(preferHtml || link.idbKey ? "html" : "url");
-    document.getElementById("lnk-code-box").classList.add("hidden");
     addLinkModal.classList.remove("hidden");
   };
 
@@ -1887,8 +1867,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const title = document.getElementById("lnk-title").value.trim();
     const subtitle = document.getElementById("lnk-subtitle").value.trim();
-    const type = document.getElementById("lnk-type").value.trim() || "Web Summary";
-    const badge = document.getElementById("lnk-badge").value.trim() || "ใหม่";
     const today = new Date().toISOString().split("T")[0];
 
     let url = document.getElementById("lnk-url").value.trim();
@@ -1907,20 +1885,18 @@ document.addEventListener("DOMContentLoaded", () => {
     if (editId) {
       const patch = {
         title, subtitle,
-        type: idbKey ? "Embedded HTML" : type,
+        type: idbKey ? "Embedded HTML" : "Web App",
         url, idbKey,
-        badge: idbKey ? "HTML ในตัว" : badge,
+        badge: idbKey ? "HTML ในตัว" : "Web App",
         frameRestricted: !idbKey && isLikelyRestrictedUrl(url),
         updatedAt: today
       };
 
       const customList = customLinksMap[targetSubId] || [];
       const customIdx = customList.findIndex(l => l.id === editId);
-      if (customIdx !== -1) {
-        customList[customIdx] = { ...customList[customIdx], ...patch };
-      } else {
-        linkOverrides[editId] = patch;
-      }
+      if (customIdx !== -1) customList[customIdx] = { ...customList[customIdx], ...patch };
+      else linkOverrides[editId] = patch;
+
       saveState();
       allSubjects = getMergedSubjects();
       updateStats();
@@ -1932,9 +1908,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const newLink = {
         id: "lnk-" + Date.now(),
         title, subtitle,
-        type: idbKey ? "Embedded HTML" : type,
+        type: idbKey ? "Embedded HTML" : "Web App",
         url, idbKey,
-        badge: idbKey ? "HTML ในตัว" : badge,
+        badge: idbKey ? "HTML ในตัว" : "ใหม่",
         frameRestricted: !idbKey && isLikelyRestrictedUrl(url),
         updatedAt: today
       };
@@ -1950,24 +1926,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  document.getElementById("lnk-copy-btn").addEventListener("click", () => {
-    const obj = {
-      id: "lnk-" + Date.now(),
-      title: document.getElementById("lnk-title").value.trim(),
-      subtitle: document.getElementById("lnk-subtitle").value.trim(),
-      type: document.getElementById("lnk-type").value.trim(),
-      url: document.getElementById("lnk-url").value.trim(),
-      badge: document.getElementById("lnk-badge").value.trim(),
-      updatedAt: new Date().toISOString().split("T")[0]
-    };
-    const formatted = JSON.stringify(obj, null, 2);
-    document.getElementById("lnk-code-box").classList.remove("hidden");
-    document.getElementById("lnk-code-pre").textContent = formatted;
-    navigator.clipboard.writeText(formatted + ",").then(() => showToast("คัดลอกโค้ดลิงก์แล้ว"));
-  });
-
-  // Add Slide Modal (With Subject Lock!)
+  // Add Slide Modal
   window.openAddSlideModal = () => {
+    if (allSubjects.length === 0) {
+      showToast("กรุณาสร้างรายวิชาก่อนเพิ่มสไลด์");
+      document.getElementById("open-add-subject-btn").click();
+      return;
+    }
     syncSubjectSelects(activeSubjectId);
     addSlideModal.classList.remove("hidden");
   };
@@ -1978,7 +1943,7 @@ document.addEventListener("DOMContentLoaded", () => {
     slideTypeMode = mode;
     ["pdf", "images", "url"].forEach(m => {
       document.getElementById("sl-tab-" + m).className = m === mode
-        ? "py-1.5 rounded-lg bg-[var(--s3)] text-[var(--tx)] font-medium transition"
+        ? "py-1.5 rounded-lg bg-[var(--accent)] text-white font-medium transition"
         : "py-1.5 rounded-lg text-[var(--tx3)] font-medium transition";
       document.getElementById("sl-panel-" + m).classList.toggle("hidden", m !== mode);
     });
@@ -2121,12 +2086,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
   window.resetToDefaultData = async function() {
     if (confirm("ต้องการล้างวิชา ลิงก์ และสไลด์ที่เพิ่มเอง แล้วรีเซ็ตเป็นค่าเริ่มต้นหรือไม่?")) {
-      [LS_CUSTOM_SUBJECTS, LS_DELETED_SUBJECTS, LS_CUSTOM_LINKS, LS_DELETED_LINKS, LS_LINK_OVERRIDES, LS_CUSTOM_SLIDES, LS_DELETED_SLIDES, LS_FAVORITES].forEach(k => localStorage.removeItem(k));
+      [LS_CUSTOM_SUBJECTS, LS_DELETED_SUBJECTS, LS_CUSTOM_LINKS, LS_DELETED_LINKS, LS_LINK_OVERRIDES, LS_CUSTOM_SLIDES, LS_DELETED_SLIDES, LS_FAVORITES, LS_LOCKED_SUBJECT].forEach(k => localStorage.removeItem(k));
       await StudyVaultDB.clearAll().catch(() => {});
       blobUrlCache.clear();
       customSubjects = []; deletedSubjectIds.clear();
       customLinksMap = {}; deletedLinkIds.clear(); linkOverrides = {};
       customSlidesMap = {}; deletedSlideIds.clear(); favorites.clear();
+      lockedSubjectId = "";
       allSubjects = getMergedSubjects();
       updateStats(); renderCategories(); navigateHome();
       showToast("รีเซ็ตข้อมูลทั้งหมดเรียบร้อย");
@@ -2149,7 +2115,6 @@ document.addEventListener("DOMContentLoaded", () => {
   updateStats();
   renderCategories();
 
-  // Check Popout Slide Mode (?slidePopout=1&subject=...&slide=...)
   const params = new URLSearchParams(window.location.search);
   if (params.get("slidePopout") === "1") {
     const subId = params.get("subject");
