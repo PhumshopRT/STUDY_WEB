@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lecture Slides — Radiopathology</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: 'Inter', 'Prompt', sans-serif;
+      background: #0d0e10;
+      color: #edefef;
+      font-variant-numeric: tabular-nums;
+    }
+    .slide { display: none; }
+    .slide.active { display: flex; }
+  </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden select-none">
+
+  <!-- Slide Top Controls -->
+  <header class="px-4 py-2.5 bg-[#141618] border-b border-white/10 flex items-center justify-between gap-2 text-xs flex-shrink-0">
+    <div class="flex items-center gap-2 min-w-0">
+      <span class="px-2 py-0.5 rounded bg-[#d1fe17]/15 text-[#d1fe17] font-semibold border border-[#d1fe17]/30 whitespace-nowrap flex-shrink-0">SLIDE DECK</span>
+      <span class="text-slate-300 font-medium truncate">Lecture 01: Basic Radiopathology &amp; Densities</span>
+    </div>
+    <div class="flex items-center gap-1.5 flex-shrink-0">
+      <button onclick="prevSlide()" class="px-2.5 py-1 rounded bg-white/5 hover:bg-white/15 border border-white/10 transition whitespace-nowrap">← ก่อนหน้า</button>
+      <span id="slide-counter" class="px-1.5 text-slate-400 font-semibold whitespace-nowrap">01 / 04</span>
+      <button onclick="nextSlide()" class="px-2.5 py-1 rounded bg-[#d1fe17] text-[#141a02] font-semibold hover:bg-[#ddfe51] transition whitespace-nowrap">ถัดไป →</button>
+    </div>
+  </header>
+
+  <!-- Slide Stage -->
+  <main class="flex-1 p-5 sm:p-8 flex items-center justify-center overflow-y-auto">
+    
+    <!-- Slide 1 -->
+    <section class="slide active w-full max-w-2xl aspect-[16/10] rounded-2xl bg-gradient-to-br from-[#151821] to-[#111318] border border-white/10 p-8 flex-col justify-between shadow-2xl">
+      <div class="flex items-center justify-between text-xs text-slate-400">
+        <span>RADP301 • RADIOPATHOLOGY</span>
+        <span>Slide 01</span>
+      </div>
+      <div class="space-y-3">
+        <span class="inline-block px-2.5 py-1 rounded-md bg-pink-500/15 text-pink-300 text-xs font-medium border border-pink-500/25">บทนำรังสีพยาธิวิทยา</span>
+        <h1 class="text-2xl sm:text-3xl font-bold text-white leading-tight">5 Basic Radiographic Densities &amp; Lesion Patterns</h1>
+        <p class="text-sm text-slate-300">พื้นฐานการแปลผลความเข้มเงาบนภาพถ่ายรังสี (X-ray) และค่าการดูดกลืนรังสีใน CT Scan</p>
+      </div>
+      <div class="pt-4 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400">
+        <span>กดปุ่ม "ถัดไป →" หรือลูกศรคีย์บอร์ดเพื่อเลื่อนสไลด์</span>
+        <span>อ่านเทียบข้างๆ เว็บสรุปได้ทันที</span>
+      </div>
+    </section>
+
+    <!-- Slide 2 -->
+    <section class="slide w-full max-w-2xl aspect-[16/10] rounded-2xl bg-[#14161a] border border-white/10 p-7 flex-col justify-between shadow-2xl">
+      <div class="flex items-center justify-between text-xs text-slate-400">
+        <span>5 BASIC DENSITIES (ดำ → ขาว)</span>
+        <span>Slide 02</span>
+      </div>
+      <div class="space-y-2.5">
+        <div class="p-2.5 rounded-xl bg-black border border-white/15 flex justify-between text-xs"><span class="font-semibold text-white">1. Air (อากาศ)</span><span class="text-slate-400">ดำที่สุด (-1000 HU) • ปอด, ลำไส้</span></div>
+        <div class="p-2.5 rounded-xl bg-zinc-900 border border-white/15 flex justify-between text-xs"><span class="font-semibold text-white">2. Fat (ไขมัน)</span><span class="text-slate-300">เทาเข้ม (-50 to -100 HU) • Subcutaneous</span></div>
+        <div class="p-2.5 rounded-xl bg-zinc-700 border border-white/15 flex justify-between text-xs"><span class="font-semibold text-white">3. Water / Soft Tissue</span><span class="text-slate-200">เทากลาง (0 to +60 HU) • หัวใจ, ตับ, น้ำ</span></div>
+        <div class="p-2.5 rounded-xl bg-zinc-400 border border-white/15 flex justify-between text-xs text-black"><span class="font-bold">4. Bone / Calcium</span><span class="font-medium">ขาว (+400 to +1000 HU) • กระดูก, นิ่ว</span></div>
+        <div class="p-2.5 rounded-xl bg-white border border-white flex justify-between text-xs text-black"><span class="font-bold">5. Metal (โลหะ/สารทึบรังสี)</span><span class="font-medium">ขาวสว่างจัด (+2000+ HU) • Contrast, Implant</span></div>
+      </div>
+      <div class="text-[11px] text-slate-400">ยิ่งเลขอะตอมสูง (High Z) ยิ่งดูดกลืนรังสี X มาก → ภาพยิ่งขาว (Radiopaque)</div>
+    </section>
+
+    <!-- Slide 3 -->
+    <section class="slide w-full max-w-2xl aspect-[16/10] rounded-2xl bg-[#14161a] border border-white/10 p-7 flex-col justify-between shadow-2xl">
+      <div class="flex items-center justify-between text-xs text-slate-400">
+        <span>PATHOLOGY CLASSIFICATION</span>
+        <span>Slide 03</span>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div class="p-4 rounded-xl bg-sky-500/10 border border-sky-500/30 space-y-2">
+          <h2 class="font-bold text-sky-300 text-sm">Additive (เพิ่มความทึบ)</h2>
+          <p class="text-xs text-slate-300">มีเนื้อเยื่อ/น้ำ/แคลเซียมมาเพิ่มจากปกติ → ใช้ kVp สูงขึ้นเล็กน้อยถ้าจำเป็น</p>
+          <p class="text-[11px] text-sky-200">ตัวอย่าง: Pneumonia, Pleural effusion, Osteosarcoma, Edema</p>
+        </div>
+        <div class="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 space-y-2">
+          <h2 class="font-bold text-rose-300 text-sm">Subtractive (ลดความทึบ)</h2>
+          <p class="text-xs text-slate-300">สูญเสียมวลกระดูก หรือมีลมแทรกแทนเนื้อเยื่อ → ใช้เทคนิคลดลง</p>
+          <p class="text-[11px] text-rose-200">ตัวอย่าง: Osteoporosis, Emphysema, Pneumothorax, Lytic lesion</p>
+        </div>
+      </div>
+      <div class="text-[11px] text-slate-400">เทคนิคการจำ: Add = เพิ่มเนื้อ/น้ำ (ขาวขึ้น) | Subtract = ลบเนื้อ/เพิ่มลม (ดำขึ้น)</div>
+    </section>
+
+    <!-- Slide 4 -->
+    <section class="slide w-full max-w-2xl aspect-[16/10] rounded-2xl bg-[#14161a] border border-white/10 p-7 flex-col justify-between shadow-2xl">
+      <div class="flex items-center justify-between text-xs text-slate-400">
+        <span>KEY SIGNS TO SPOT ON EXAM</span>
+        <span>Slide 04</span>
+      </div>
+      <div class="space-y-3 text-xs">
+        <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+          <span class="font-bold text-[#d1fe17]">Silhouette Sign:</span>
+          <span class="text-slate-300"> การหายไปของขอบเขตระหว่าง 2 โครงสร้างที่มีความทึบใกล้เคียงกันวางชิดกัน (เช่น ปอดกลีบกลางขวาอักเสบ ลบขอบหัวใจขวา)</span>
+        </div>
+        <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+          <span class="font-bold text-[#d1fe17]">Air Bronchogram:</span>
+          <span class="text-slate-300"> เงาดำของอากาศในหลอดลมตัดกับความขาวของถุงลมที่มีหนอง/น้ำ</span>
+        </div>
+        <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+          <span class="font-bold text-[#d1fe17]">Central Necrosis (CT):</span>
+          <span class="text-slate-300"> ขอบก้อนจับสารทึบรังสี (Rim enhancement) แต่แกนกลางดำ (+10 to +25 HU) ไม่จับสารทึบรังสี</span>
+        </div>
+      </div>
+      <div class="text-[11px] text-slate-400">จบ Lecture 01 • ลองสลับดูบัตรคำในฝั่งเว็บสรุปได้เลย!</div>
+    </section>
+
+  </main>
+
+  <script>
+    const slides = document.querySelectorAll('.slide');
+    const counter = document.getElementById('slide-counter');
+    let idx = 0;
+
+    function updateSlide() {
+      slides.forEach((s, i) => s.classList.toggle('active', i === idx));
+      counter.textContent = String(idx + 1).padStart(2, '0') + ' / ' + String(slides.length).padStart(2, '0');
+    }
+    function nextSlide() {
+      idx = (idx + 1) % slides.length;
+      updateSlide();
+    }
+    function prevSlide() {
+      idx = (idx - 1 + slides.length) % slides.length;
+      updateSlide();
+    }
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') nextSlide();
+      if (e.key === 'ArrowLeft') prevSlide();
+    });
+  </script>
+</body>
+</html>

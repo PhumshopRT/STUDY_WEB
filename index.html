@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="th" class="h-full dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0a0a0b">
+  <title>StudyVault — Studio Hub &amp; Side-by-Side Slide Reader</title>
+
+  <!-- Typography: Inter + Prompt -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Phosphor Icons -->
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+  <!-- PDF.js & pdf-lib for GoodNotes-style PDF annotation and export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'Prompt', 'system-ui', 'sans-serif'],
+            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* OpenHiggsfield Studio Design Tokens */
+    :root {
+      --bg: #f4f5f6;
+      --rail: #eceef0;
+      --s1: #ffffff;
+      --s2: #ffffff;
+      --s3: #f0f2f4;
+      --s4: #e4e7ea;
+      --line: rgba(15, 23, 42, 0.09);
+      --line-2: rgba(15, 23, 42, 0.16);
+      --tx: #111315;
+      --tx2: #4b5256;
+      --tx3: #6c7377;
+      --tx4: #7d8486;
+      --accent: #a3e635;
+      --accent-strong: #bef264;
+      --accent-ink: #141a02;
+      --accent-08: rgba(132, 204, 22, 0.12);
+      --accent-14: rgba(132, 204, 22, 0.18);
+      --accent-32: rgba(101, 163, 13, 0.45);
+      --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06);
+      --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.06), 0 16px 36px rgba(0, 0, 0, 0.08);
+      --glint: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      --ease: cubic-bezier(0.2, 0, 0, 1);
+      --ease-slide: cubic-bezier(0.16, 1, 0.3, 1);
+      --danger: #e11d48;
+      --danger-bg: rgba(225, 29, 72, 0.08);
+    }
+
+    html.dark {
+      --bg: #0a0a0b;
+      --rail: #101112;
+      --s1: #151719;
+      --s2: #1a1d1f;
+      --s3: #222629;
+      --s4: #2b3033;
+      --line: rgba(255, 255, 255, 0.06);
+      --line-2: rgba(255, 255, 255, 0.11);
+      --tx: #edefef;
+      --tx2: #a8aeaf;
+      --tx3: #878e90;
+      --tx4: #7d8486;
+      --accent: #d1fe17;
+      --accent-strong: #ddfe51;
+      --accent-ink: #141a02;
+      --accent-08: rgba(209, 254, 23, 0.08);
+      --accent-14: rgba(209, 254, 23, 0.14);
+      --accent-32: rgba(209, 254, 23, 0.32);
+      --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+      --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.3), 0 16px 40px rgba(0, 0, 0, 0.35);
+      --glint: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+      --danger: #ff8d78;
+      --danger-bg: rgba(255, 141, 120, 0.12);
+    }
+
+    body {
+      font-family: 'Inter', 'Prompt', ui-sans-serif, system-ui, sans-serif;
+      background-color: var(--bg);
+      color: var(--tx);
+      caret-color: var(--accent);
+      accent-color: var(--accent);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .tnum { font-variant-numeric: tabular-nums; }
+
+    .ohf-surface {
+      background: var(--s1);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-1), var(--glint);
+    }
+    .ohf-bar {
+      background: var(--s2);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-2), var(--glint);
+    }
+    .ohf-rail {
+      background: var(--rail);
+      border: 1px solid var(--line);
+    }
+    .ohf-input {
+      background: var(--s1);
+      border: 1px solid var(--line-2);
+      color: var(--tx);
+    }
+    .ohf-input:focus {
+      outline: none;
+      border-color: var(--accent-32);
+      box-shadow: 0 0 0 2px var(--accent-14);
+    }
+
+    .ohf-btn-primary {
+      background: var(--accent);
+      color: var(--accent-ink);
+      font-weight: 600;
+      transition: background 180ms var(--ease), transform 140ms var(--ease);
+    }
+    .ohf-btn-primary:hover { background: var(--accent-strong); }
+    .ohf-btn-primary:active { transform: scale(0.98); }
+
+    /* Sliding Scope Tabs */
+    .ohf-tabs {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .ohf-thumb {
+      position: absolute;
+      top: 0; bottom: 0; left: 0;
+      width: var(--thumb-w, 0px);
+      transform: translate3d(var(--thumb-x, 0px), 0, 0);
+      border-radius: 10px;
+      background: var(--s3);
+      border: 1px solid var(--line-2);
+      box-shadow: var(--shadow-1), var(--glint);
+      opacity: 0;
+      pointer-events: none;
+      transition: transform 0.44s var(--ease-slide), width 0.44s var(--ease-slide), opacity 0.2s ease;
+    }
+    .ohf-thumb[data-ready="true"] { opacity: 1; }
+
+    /* Scaled Thumbnail Iframe */
+    .preview-iframe-scale {
+      width: 1200px;
+      height: 750px;
+      transform-origin: top left;
+      pointer-events: none;
+      border: 0;
+    }
+
+    @keyframes ohf-sheen {
+      from { transform: translate3d(-50%, 0, 0); }
+      to { transform: translate3d(0, 0, 0); }
+    }
+    .ohf-sheen-layer {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: var(--rail);
+    }
+    .ohf-sheen-layer::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      width: 200%;
+      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 25%, transparent 50%, rgba(255,255,255,0.04) 75%, transparent 100%);
+      animation: ohf-sheen 1.8s linear infinite;
+    }
+
+    @keyframes ohf-arrive {
+      0% { opacity: 0; transform: scale(0.985) translateY(8px); }
+      100% { opacity: 1; transform: none; }
+    }
+    .ohf-arrive { animation: ohf-arrive 360ms var(--ease-slide) forwards; }
+
+    @keyframes ohf-drain {
+      from { transform: scaleX(1); }
+      to { transform: scaleX(0); }
+    }
+    .ohf-drain-bar {
+      transform-origin: left center;
+      animation: ohf-drain 6s linear forwards;
+    }
+
+    /* Resizer Handle */
+    .split-resizer:hover .resizer-pill,
+    .split-resizer.dragging .resizer-pill {
+      background: var(--accent);
+      height: 48px;
+    }
+
+    /* Drag-over dropzone highlight */
+    .drop-active {
+      border-color: var(--accent) !important;
+      background: var(--accent-08) !important;
+    }
+
+    ::selection { background: rgba(209, 254, 23, 0.28); color: #fbfef1; }
+
+    .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 9999px; }
+  </style>
+</head>
+
+<body class="min-h-screen flex flex-col">
+
+  <!-- ===================================================================== -->
+  <!-- FLOATING STUDIO TOPBAR                                                -->
+  <!-- ===================================================================== -->
+  <header id="main-topbar" class="sticky top-3 z-40 w-full px-3 sm:px-6 pointer-events-none">
+    <div class="max-w-[1480px] mx-auto flex flex-wrap items-center justify-between gap-2.5">
+      
+      <!-- Instrument 1: Brand + Scope Tabs -->
+      <div class="ohf-bar pointer-events-auto h-11 rounded-[14px] px-1.5 flex items-center gap-2 max-w-full overflow-x-auto custom-scrollbar">
+        <button onclick="navigateHome()" class="flex items-center gap-2 px-2.5 py-1.5 rounded-[10px] hover:bg-[var(--s3)] transition-colors flex-shrink-0">
+          <span class="w-2 h-2 rounded-full bg-[var(--accent)] shadow-[0_0_8px_var(--accent)]"></span>
+          <span class="font-semibold text-sm tracking-tight text-[var(--tx)]">StudyVault</span>
+        </button>
+
+        <div class="h-4 w-[1px] bg-[var(--line-2)] flex-shrink-0"></div>
+
+        <div id="category-tabs-rail" class="ohf-tabs flex-shrink-0">
+          <div id="category-thumb" class="ohf-thumb"></div>
+        </div>
+      </div>
+
+      <!-- Instrument 2: Search + Theme + Add Subject -->
+      <div class="ohf-bar pointer-events-auto h-11 rounded-[14px] px-1.5 flex items-center gap-1.5 ml-auto">
+        <div class="relative hidden sm:flex items-center">
+          <i class="ph ph-magnifying-glass absolute left-3 text-xs text-[var(--tx3)] pointer-events-none"></i>
+          <input 
+            type="text" 
+            id="search-input"
+            placeholder="ค้นหาวิชาหรือลิงก์..." 
+            class="ohf-input w-44 lg:w-56 h-8 pl-8 pr-8 rounded-[10px] text-xs placeholder:text-[var(--tx4)] transition-all"
+          >
+          <kbd class="absolute right-2 px-1.5 py-0.5 rounded bg-[var(--s3)] border border-[var(--line)] text-[10px] text-[var(--tx3)] tnum">/</kbd>
+        </div>
+
+        <button 
+          id="theme-toggle-btn" 
+          class="w-8 h-8 rounded-[10px] flex items-center justify-center text-[var(--tx2)] hover:text-[var(--tx)] hover:bg-[var(--s3)] transition-colors text-sm"
+          title="สลับโหมดมืด / สว่าง"
+        >
+          <i id="theme-icon" class="ph ph-sun"></i>
+        </button>
+
+        <button 
+          onclick="openQuickSlideUpload()"
+          class="h-8 px-2.5 rounded-[10px] bg-[var(--s3)] hover:bg-[var(--s4)] border border-[var(--line-2)] text-[var(--tx)] text-xs font-medium flex items-center gap-1.5 whitespace-nowrap transition-colors"
+          title="อัปโหลดลิงก์หรือสไลด์เข้าวิชาที่ล็อคไว้"
+        >
+          <i class="ph ph-upload-simple text-sm text-[var(--accent)]"></i>
+          <span class="hidden sm:inline">เพิ่มสื่อ/สไลด์</span>
+        </button>
+
+        <button 
+          id="open-add-subject-btn"
+          class="ohf-btn-primary h-8 px-3 rounded-[10px] text-xs flex items-center gap-1.5 whitespace-nowrap"
+        >
+          <i class="ph ph-plus text-sm font-bold"></i>
+          <span>เพิ่มวิชา</span>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- ===================================================================== -->
+  <!-- LEVEL 1 VIEW: SUBJECT GALLERY                                         -->
+  <!-- ===================================================================== -->
+  <main id="view-home" class="max-w-[1480px] mx-auto px-4 sm:px-6 pt-7 pb-14 flex-1 w-full space-y-6 ohf-arrive">
+    
+    <!-- Mobile Search -->
+    <div class="sm:hidden relative">
+      <i class="ph ph-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-[var(--tx3)]"></i>
+      <input type="text" id="search-input-mobile" placeholder="ค้นหาวิชา, รหัสวิชา, หรือบทเรียน..." class="ohf-input w-full h-10 pl-9 pr-4 rounded-xl text-xs">
+    </div>
+
+    <!-- Header Strip -->
+    <section class="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-5 border-b border-[var(--line)]">
+      <div class="space-y-1.5 max-w-2xl">
+        <div class="flex items-center gap-2 text-xs text-[var(--tx3)]">
+          <span class="inline-flex items-center gap-1.5 text-[var(--tx2)] font-medium">
+            <span class="w-1.5 h-1.5 rounded-full bg-[var(--accent)]"></span>
+            Studio Mode
+          </span>
+          <span>•</span>
+          <span>คลังบทเรียน + สไลด์เรียนเทียบข้างๆ</span>
+        </div>
+        <h1 class="text-2xl sm:text-3xl font-semibold tracking-tight text-[var(--tx)]">
+          คลังสรุปวิชาทั้งหมด
+        </h1>
+        <p class="text-xs sm:text-sm text-[var(--tx2)]">
+          ดูหน้าตาเว็บสรุปจริงบนการ์ด กดเข้าไปเพื่อดูลิงก์ทั้งหมด เพิ่ม/ลบ/แก้ไข และเปิดอ่านเทียบกับสไลด์ข้างๆ กันได้ทันที
+        </p>
+      </div>
+
+      <!-- Tabular Stats -->
+      <div class="flex items-center gap-2 tnum text-xs flex-wrap">
+        <div class="ohf-surface px-3.5 py-2 rounded-xl flex items-center gap-2">
+          <span class="text-[var(--tx3)]">วิชา</span>
+          <strong id="stat-subjects" class="text-sm font-semibold text-[var(--tx)]">00</strong>
+        </div>
+        <div class="ohf-surface px-3.5 py-2 rounded-xl flex items-center gap-2">
+          <span class="text-[var(--tx3)]">ลิงก์</span>
+          <strong id="stat-links" class="text-sm font-semibold text-[var(--accent)]">00</strong>
+        </div>
+        <div class="ohf-surface px-3.5 py-2 rounded-xl flex items-center gap-2">
+          <span class="text-[var(--tx3)]">สไลด์</span>
+          <strong id="stat-slides" class="text-sm font-semibold text-[var(--tx)]">00</strong>
+        </div>
+        <div class="ohf-surface px-3.5 py-2 rounded-xl flex items-center gap-2">
+          <span class="text-[var(--tx3)]">ติดดาว</span>
+          <strong id="stat-favorites" class="text-sm font-semibold text-[var(--tx)]">00</strong>
+        </div>
+      </div>
+    </section>
+
+    <!-- Subject Cards Grid -->
+    <section>
+      <div id="subjects-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5"></div>
+    </section>
+
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- LEVEL 2 VIEW: SUBJECT WORKSPACE + SIDE-BY-SIDE SLIDE MODE             -->
+  <!-- ===================================================================== -->
+  <main id="view-subject" class="hidden max-w-[1480px] mx-auto px-4 sm:px-6 pt-5 pb-4 flex-1 w-full flex flex-col gap-3.5 ohf-arrive">
+    
+    <!-- Workspace Header -->
+    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-[var(--line)] flex-shrink-0">
+      <div class="flex items-center gap-3">
+        <button 
+          onclick="navigateHome()" 
+          class="ohf-surface h-8 px-2.5 rounded-xl text-xs font-medium text-[var(--tx2)] hover:text-[var(--tx)] hover:bg-[var(--s3)] flex items-center gap-1.5 transition-colors active:scale-[0.98]"
+        >
+          <i class="ph ph-arrow-left text-sm"></i>
+          <span>กลับหน้ารวม</span>
+        </button>
+
+        <div class="h-4 w-[1px] bg-[var(--line-2)] hidden sm:block"></div>
+
+        <div class="flex items-center gap-2.5">
+          <div id="ws-subject-icon" class="w-8 h-8 rounded-lg bg-[var(--s3)] border border-[var(--line-2)] flex items-center justify-center text-[var(--tx)] text-sm flex-shrink-0">
+            📘
+          </div>
+          <div>
+            <div class="flex items-center gap-2 tnum">
+              <span id="ws-subject-code" class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[var(--accent-08)] text-[var(--accent)] border border-[var(--accent-32)]">RADP301</span>
+              <span id="ws-subject-category" class="text-[11px] text-[var(--tx3)]">วิทยาศาสตร์สุขภาพ</span>
+            </div>
+            <h1 id="ws-subject-title" class="text-sm sm:text-base font-semibold text-[var(--tx)] leading-tight mt-0.5">
+              วิชารังสีพยาธิ (Radiopathology)
+            </h1>
+          </div>
+        </div>
+      </div>
+
+      <!-- Workspace Right Action Bar -->
+      <div class="flex flex-wrap items-center gap-1.5">
+        <!-- Side-by-Side Split Toggle -->
+        <button 
+          id="ws-split-toggle-btn"
+          onclick="toggleSplitMode()"
+          class="ohf-surface h-8 px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-[0.98]"
+          title="เปิด/ปิดโหมดอ่านเว็บเทียบกับสไลด์ข้างๆ กัน"
+        >
+          <i class="ph ph-columns text-sm"></i>
+          <span>อ่านเทียบสไลด์ (<span id="ws-slides-badge" class="tnum">0</span>)</span>
+        </button>
+
+        <!-- Swap Left/Right Sides in Split Mode -->
+        <button 
+          id="ws-swap-sides-btn"
+          onclick="swapSplitSides()"
+          class="hidden ohf-surface h-8 px-2.5 rounded-xl text-xs text-[var(--tx2)] hover:text-[var(--tx)] hover:bg-[var(--s3)] items-center gap-1 transition-colors"
+          title="สลับฝั่งซ้าย-ขวา (เว็บ ↔ สไลด์)"
+        >
+          <i class="ph ph-arrows-left-right text-sm"></i>
+          <span class="hidden xl:inline">สลับฝั่ง</span>
+        </button>
+
+        <button 
+          id="open-add-slide-btn"
+          class="ohf-surface h-8 px-2.5 rounded-xl text-xs font-medium text-[var(--tx)] hover:bg-[var(--s3)] flex items-center gap-1.5 transition-colors"
+        >
+          <i class="ph ph-presentation-chart text-sm text-[var(--accent)]"></i>
+          <span>เพิ่มสไลด์</span>
+        </button>
+
+        <button 
+          id="open-add-link-btn"
+          class="ohf-btn-primary h-8 px-3 rounded-xl text-xs flex items-center gap-1"
+        >
+          <i class="ph ph-plus text-sm"></i>
+          <span>เพิ่มลิงก์</span>
+        </button>
+
+        <button 
+          id="ws-star-btn"
+          class="ohf-surface w-8 h-8 rounded-xl flex items-center justify-center text-[var(--tx3)] hover:text-[var(--accent)] transition-colors"
+          title="ติดดาววิชานี้"
+        >
+          <i class="ph ph-star text-sm"></i>
+        </button>
+
+        <button 
+          id="ws-delete-subject-btn"
+          class="ohf-surface w-8 h-8 rounded-xl flex items-center justify-center text-[var(--tx3)] hover:text-[var(--danger)] hover:bg-[var(--danger-bg)] transition-colors"
+          title="ลบวิชานี้"
+        >
+          <i class="ph ph-trash text-sm"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Workspace Main Area (Height locked on desktop to eliminate double scrollbars) -->
+    <div id="ws-layout-root" class="flex flex-col lg:flex-row gap-3.5 items-stretch lg:h-[calc(100vh-150px)] min-h-[540px]">
+      
+      <!-- Left Rail: Links & Slides Directory -->
+      <aside id="ws-sidebar" class="w-full lg:w-[330px] flex-shrink-0 flex flex-col gap-3.5 overflow-y-auto custom-scrollbar pr-0.5">
+        
+        <!-- Links Section -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between px-1 tnum">
+            <h2 class="text-xs font-medium text-[var(--tx3)] flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-[var(--accent)]"></span>
+              <span>ลิงก์เว็บสรุป (<span id="ws-links-count">00</span>)</span>
+            </h2>
+          </div>
+          <div id="ws-links-list" class="space-y-2"></div>
+        </div>
+
+        <!-- Slides Quick List -->
+        <div class="space-y-2 pt-2 border-t border-[var(--line)]">
+          <div class="flex items-center justify-between px-1 tnum">
+            <h2 class="text-xs font-medium text-[var(--tx3)] flex items-center gap-1.5">
+              <i class="ph ph-presentation-chart text-[var(--accent)]"></i>
+              <span>สไลด์เรียน (<span id="ws-slides-count">00</span>)</span>
+            </h2>
+            <button onclick="openAddSlideModal()" class="text-[11px] text-[var(--accent)] hover:underline">+ เพิ่ม</button>
+          </div>
+          <div id="ws-slides-list" class="space-y-1.5"></div>
+        </div>
+
+        <!-- About Subject -->
+        <div class="ohf-rail p-3 rounded-xl space-y-1.5 mt-auto">
+          <h3 class="text-[11px] font-semibold text-[var(--tx2)]">รายละเอียดวิชา</h3>
+          <p id="ws-subject-desc" class="text-[11px] text-[var(--tx3)] leading-relaxed"></p>
+          <div id="ws-subject-tags" class="flex flex-wrap gap-1 pt-0.5"></div>
+        </div>
+
+      </aside>
+
+      <!-- Dual-Pane Container (Web Stage + Resizer + Slide Reader) -->
+      <div id="ws-dual-panes" class="flex-1 flex flex-col lg:flex-row min-w-0 min-h-0 gap-0">
+        
+        <!-- PANE 1: WEB SUMMARY PREVIEW STAGE -->
+        <section id="ws-web-pane" class="ohf-surface rounded-2xl overflow-hidden flex flex-col min-w-0 min-h-[460px] flex-1">
+          
+          <!-- Web Chrome Toolbar -->
+          <div class="bg-[var(--rail)] px-3 py-2 border-b border-[var(--line)] flex items-center justify-between gap-2 flex-shrink-0 overflow-x-auto custom-scrollbar">
+            
+            <div class="flex items-center gap-2 min-w-0">
+              <select id="split-link-select" class="hidden ohf-input h-7 px-2 rounded-lg text-[11px] max-w-[155px] truncate"></select>
+
+              <div id="vp-group" class="flex items-center bg-[var(--bg)] p-0.5 rounded-lg border border-[var(--line)] text-xs flex-shrink-0">
+                <button onclick="setViewport('desktop')" id="vp-desktop" class="px-2 py-1 rounded-md bg-[var(--s3)] text-[var(--tx)] transition-colors" title="Desktop">
+                  <i class="ph ph-desktop"></i>
+                </button>
+                <button onclick="setViewport('tablet')" id="vp-tablet" class="px-2 py-1 rounded-md text-[var(--tx3)] hover:text-[var(--tx)] transition-colors" title="Tablet">
+                  <i class="ph ph-device-tablet"></i>
+                </button>
+                <button onclick="setViewport('mobile')" id="vp-mobile" class="px-2 py-1 rounded-md text-[var(--tx3)] hover:text-[var(--tx)] transition-colors" title="Mobile">
+                  <i class="ph ph-device-mobile"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Address Pill -->
+            <div class="hidden sm:flex flex-1 min-w-[70px] max-w-[220px] items-center bg-[var(--bg)] border border-[var(--line)] rounded-lg px-2 py-1 text-[11px] text-[var(--tx2)] overflow-hidden tnum">
+              <span class="w-1.5 h-1.5 rounded-full bg-[var(--accent)] mr-1.5 flex-shrink-0"></span>
+              <span id="stage-url-text" class="truncate flex-1">...</span>
+              <button onclick="copyActiveUrl()" class="ml-1 text-[var(--tx3)] hover:text-[var(--tx)] flex-shrink-0" title="คัดลอกลิงก์">
+                <i class="ph ph-copy"></i>
+              </button>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex items-center gap-1 flex-shrink-0">
+              <button onclick="editActiveLink()" id="stage-edit-btn" class="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--accent)] hover:bg-[var(--s3)] transition-colors" title="แก้ไข / วางโค้ด HTML">
+                <i class="ph ph-pencil-simple text-sm"></i>
+              </button>
+              <button id="stage-refresh-btn" class="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--s3)] transition-colors" title="โหลดใหม่">
+                <i class="ph ph-arrows-clockwise text-sm"></i>
+              </button>
+              <button id="stage-fullscreen-btn" class="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--s3)] transition-colors" title="เต็มจอ">
+                <i class="ph ph-arrows-out text-sm"></i>
+              </button>
+              <a id="stage-external-btn" href="#" target="_blank" rel="noopener noreferrer" class="ohf-btn-primary h-7 px-2.5 rounded-lg text-[11px] flex items-center gap-1">
+                <span>เปิดเต็มจอ</span>
+                <i class="ph ph-arrow-square-out text-xs"></i>
+              </a>
+            </div>
+          </div>
+
+          <!-- Web Content Area -->
+          <div class="relative flex-1 bg-[var(--bg)] overflow-hidden flex items-center justify-center">
+            <div id="stage-loader" class="hidden ohf-sheen-layer z-20 flex flex-col items-center justify-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse"></span>
+              <p class="text-xs text-[var(--tx3)]">กำลังโหลดหน้าเว็บ...</p>
+            </div>
+
+            <!-- Subtle Warning Banner if an arbitrary external URL takes long or might block framing -->
+            <div id="stage-timeout-bar" class="hidden absolute top-2.5 left-1/2 -translate-x-1/2 z-30 ohf-bar px-3 py-1.5 rounded-xl flex items-center gap-2 text-[11px] whitespace-nowrap">
+              <span class="text-[var(--tx2)]">เว็บไม่แสดงผล?</span>
+              <button onclick="openDualDesktopWindows()" class="text-[var(--accent)] font-semibold hover:underline">เปิดหน้าต่างคู่ Desktop</button>
+              <span class="text-[var(--tx4)]">|</span>
+              <button onclick="editActiveLink(true)" class="text-[var(--tx)] hover:underline">วางโค้ด HTML</button>
+              <button onclick="document.getElementById('stage-timeout-bar').classList.add('hidden')" class="text-[var(--tx3)] hover:text-[var(--tx)] ml-1"><i class="ph ph-x"></i></button>
+            </div>
+
+            <!-- Empty Link State -->
+            <div id="stage-empty-view" class="hidden p-8 text-center space-y-3 max-w-sm">
+              <div class="w-12 h-12 mx-auto rounded-xl bg-[var(--s2)] border border-[var(--line-2)] flex items-center justify-center text-xl text-[var(--tx3)]">
+                <i class="ph ph-link-break"></i>
+              </div>
+              <p class="text-sm font-semibold text-[var(--tx)]">ยังไม่มีลิงก์ในวิชานี้</p>
+              <p class="text-xs text-[var(--tx3)]">เพิ่มลิงก์เว็บสรุปหรือวางโค้ด HTML เพื่อเริ่มอ่านและพรีวิว</p>
+              <button onclick="openAddLinkModal()" class="ohf-btn-primary h-8 px-4 rounded-lg text-xs">
+                + เพิ่มลิงก์แรก
+              </button>
+            </div>
+
+            <!-- Restricted Showcase Card (For SAMEORIGIN sites like Qwen) -->
+            <div id="stage-restricted-view" class="hidden w-full h-full overflow-y-auto custom-scrollbar p-5 flex flex-col items-center justify-center">
+              <div class="ohf-surface max-w-md w-full rounded-2xl overflow-hidden">
+                <div class="bg-[var(--rail)] px-4 py-3 border-b border-[var(--line)] flex items-center justify-between gap-3">
+                  <div class="flex items-center gap-2.5">
+                    <div id="restricted-app-icon" class="w-8 h-8 rounded-lg bg-[var(--s3)] border border-[var(--line-2)] flex items-center justify-center text-[var(--tx)] text-sm">📘</div>
+                    <div>
+                      <div id="restricted-app-title" class="text-xs font-semibold text-[var(--tx)]">RADP301</div>
+                      <div id="restricted-app-subtitle" class="text-[11px] text-[var(--tx3)]">Web Dev Deploy</div>
+                    </div>
+                  </div>
+                  <span class="text-[10px] px-2 py-0.5 rounded bg-[var(--accent-08)] text-[var(--accent)] border border-[var(--accent-32)] font-medium">SAMEORIGIN</span>
+                </div>
+                <div class="p-5 space-y-4 text-center">
+                  <div class="space-y-1.5">
+                    <h3 id="restricted-link-name" class="text-sm font-semibold text-[var(--tx)]">ชื่อลิงก์</h3>
+                    <p class="text-xs text-[var(--tx2)] leading-relaxed">
+                      เว็บต้นทาง (เช่น Qwen Deploy) ปิดกั้นการฝังใน Iframe ข้ามโดเมน คุณเลือกวิธีดูคู่กับสไลด์ได้เลย:
+                    </p>
+                  </div>
+
+                  <div class="space-y-2">
+                    <!-- Best 1-Click Side-by-Side Solution 1: Upgrade by pasting HTML -->
+                    <button onclick="editActiveLink(true)" class="ohf-btn-primary w-full h-9 px-4 rounded-xl text-xs flex items-center justify-center gap-2">
+                      <i class="ph ph-code text-sm"></i>
+                      <span>วางโค้ด HTML ของเว็บนี้ (เพื่อให้แสดงเต็มๆ ในกรอบนี้เลย)</span>
+                    </button>
+
+                    <!-- Solution 2: Open Desktop Side-by-Side Window -->
+                    <button onclick="openDualDesktopWindows()" class="w-full h-9 px-4 rounded-xl bg-[var(--s2)] hover:bg-[var(--s3)] border border-[var(--line-2)] text-[var(--tx)] text-xs font-medium flex items-center justify-center gap-2 transition-colors">
+                      <i class="ph ph-browsers text-sm text-[var(--accent)]"></i>
+                      <span>เปิดเว็บในหน้าต่างครึ่งจอซ้าย (ดูคู่กับสไลด์จอขวา)</span>
+                    </button>
+
+                    <!-- Solution 3: Local Interactive Fallback if available -->
+                    <button id="restricted-fallback-btn" class="hidden w-full h-9 px-4 rounded-xl bg-[var(--rail)] hover:bg-[var(--s3)] border border-[var(--line)] text-[var(--tx2)] text-xs font-medium transition-colors">
+                      ดูฉบับสรุปในเครื่อง (Interactive) ในกรอบนี้
+                    </button>
+                  </div>
+
+                  <div class="pt-1">
+                    <a id="restricted-open-btn" href="#" target="_blank" rel="noopener noreferrer" class="text-[11px] text-[var(--tx3)] hover:text-[var(--accent)] underline inline-flex items-center gap-1">
+                      <span>หรือเปิดแท็บใหม่ปกติ</span>
+                      <i class="ph ph-arrow-square-out"></i>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Live Iframe -->
+            <div id="stage-iframe-wrapper" class="w-full h-full transition-all duration-300 bg-[var(--s1)] overflow-hidden" style="transition-timing-function: var(--ease-slide);">
+              <iframe id="stage-iframe" src="about:blank" class="w-full h-full border-0" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" loading="lazy"></iframe>
+            </div>
+          </div>
+        </section>
+
+        <!-- DRAGGABLE SPLIT RESIZER -->
+        <div id="split-resizer" class="hidden split-resizer lg:flex w-3 cursor-col-resize items-center justify-center flex-shrink-0 select-none group" title="ลากเพื่อปรับสัดส่วนหน้าจอซ้าย-ขวา">
+          <div class="resizer-pill w-1 h-8 rounded-full bg-[var(--line-2)] transition-all duration-150"></div>
+        </div>
+
+        <!-- PANE 2: LECTURE SLIDE READER PANE (Side-by-Side) -->
+        <section id="ws-slide-pane" class="hidden ohf-surface rounded-2xl overflow-hidden flex-col min-w-0 min-h-[460px] flex-1 mt-4 lg:mt-0">
+          
+          <!-- Slide Pane Topbar -->
+          <div class="bg-[var(--rail)] px-3 py-2 border-b border-[var(--line)] flex items-center justify-between gap-2 flex-shrink-0">
+            <div class="flex items-center gap-2 min-w-0 flex-1">
+              <span class="px-2 py-0.5 rounded bg-[var(--accent-08)] text-[var(--accent)] border border-[var(--accent-32)] text-[10px] font-semibold flex-shrink-0">SLIDES</span>
+              <select id="slide-deck-select" class="ohf-input h-7 px-2 rounded-lg text-xs flex-1 max-w-[240px] truncate"></select>
+            </div>
+
+            <div class="flex items-center gap-1 flex-shrink-0">
+              <button onclick="openAddSlideModal()" class="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx2)] hover:text-[var(--accent)] hover:bg-[var(--s3)] transition-colors" title="เพิ่มสไลด์ใหม่">
+                <i class="ph ph-plus text-sm"></i>
+              </button>
+              <button onclick="popoutSlideWindow()" class="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--s3)] transition-colors" title="แยกหน้าต่างสไลด์ออกมาเดี่ยวๆ">
+                <i class="ph ph-arrow-square-out text-sm"></i>
+              </button>
+              <button id="slide-delete-btn" onclick="deleteActiveSlide()" class="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--danger)] hover:bg-[var(--danger-bg)] transition-colors" title="ลบสไลด์นี้">
+                <i class="ph ph-trash text-sm"></i>
+              </button>
+              <button id="slide-close-btn" onclick="toggleSplitMode()" class="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--s3)] transition-colors" title="ปิดหน้าต่างสไลด์">
+                <i class="ph ph-x text-sm"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Slide Content Area (Supports Drag & Drop PDF/Images!) -->
+          <div id="slide-drop-zone" class="relative flex-1 bg-[var(--bg)] overflow-hidden flex flex-col border-2 border-transparent transition-colors">
+            
+            <!-- Empty Slides State -->
+            <div id="slide-empty-view" class="hidden flex-1 p-6 flex flex-col items-center justify-center text-center space-y-4">
+              <div class="w-12 h-12 rounded-2xl bg-[var(--s2)] border border-[var(--line-2)] flex items-center justify-center text-2xl text-[var(--accent)]">
+                <i class="ph ph-presentation-chart"></i>
+              </div>
+              <div class="space-y-1 max-w-xs">
+                <h3 class="text-sm font-semibold text-[var(--tx)]">ยังไม่มีสไลด์เรียนในวิชานี้</h3>
+                <p class="text-xs text-[var(--tx3)]">ลากไฟล์ PDF / รูปสไลด์มาวางตรงนี้ หรือกดปุ่มเพิ่มสไลด์ด้านล่างได้เลย</p>
+              </div>
+              <button onclick="openAddSlideModal()" class="ohf-btn-primary h-9 px-4 rounded-xl text-xs flex items-center gap-1.5">
+                <i class="ph ph-upload-simple text-sm"></i>
+                <span>เพิ่มสไลด์เรียนแรก</span>
+              </button>
+            </div>
+
+            <!-- Slide Type 1: Iframe (HTML/Google Slides) -->
+            <iframe id="slide-iframe" src="about:blank" class="hidden w-full h-full border-0 flex-1 bg-white dark:bg-[#0d0e10]"></iframe>
+
+            <!-- Slide Type 1B: Built-in GoodNotes-style PDF.js Studio Reader -->
+            <div id="slide-pdf-viewer" class="hidden flex-1 flex flex-col overflow-hidden">
+              
+              <!-- GoodNotes Floating Annotation Toolbar -->
+              <div class="px-2.5 py-1.5 bg-[var(--rail)] border-b border-[var(--line)] flex flex-wrap items-center justify-between gap-2 text-xs flex-shrink-0">
+                
+                <!-- Tool Modes: Pan, Pen, Highlighter, Eraser -->
+                <div class="flex items-center gap-1 bg-[var(--bg)] p-0.5 rounded-lg border border-[var(--line)]">
+                  <button onclick="setPdfTool('pan')" id="pdf-tool-pan" class="h-7 px-2 rounded-md bg-[var(--s3)] text-[var(--tx)] flex items-center gap-1 transition" title="เลื่อนอ่าน (Pan)">
+                    <i class="ph ph-hand-grabbing text-sm"></i>
+                    <span class="hidden xl:inline text-[11px]">เลื่อน</span>
+                  </button>
+                  <button onclick="setPdfTool('pen')" id="pdf-tool-pen" class="h-7 px-2 rounded-md text-[var(--tx3)] hover:text-[var(--tx)] flex items-center gap-1 transition" title="ปากกา (Pen)">
+                    <i class="ph ph-pen-nib text-sm"></i>
+                    <span class="hidden xl:inline text-[11px]">ปากกา</span>
+                  </button>
+                  <button onclick="setPdfTool('highlighter')" id="pdf-tool-highlighter" class="h-7 px-2 rounded-md text-[var(--tx3)] hover:text-[var(--tx)] flex items-center gap-1 transition" title="ไฮไลท์ (Highlighter)">
+                    <i class="ph ph-highlighter text-sm"></i>
+                    <span class="hidden xl:inline text-[11px]">ไฮไลท์</span>
+                  </button>
+                  <button onclick="setPdfTool('eraser')" id="pdf-tool-eraser" class="h-7 px-2 rounded-md text-[var(--tx3)] hover:text-[var(--tx)] flex items-center gap-1 transition" title="ยางลบเส้น (Stroke Eraser)">
+                    <i class="ph ph-eraser text-sm"></i>
+                  </button>
+                </div>
+
+                <!-- Color Swatches + Size Slider -->
+                <div class="flex items-center gap-1.5">
+                  <div class="flex items-center gap-1">
+                    <button onclick="setPdfColor('#d1fe17')" class="pdf-color-dot w-4 h-4 rounded-full bg-[#d1fe17] border border-white/30 hover:scale-110 transition" title="Acid Lime"></button>
+                    <button onclick="setPdfColor('#facc15')" class="pdf-color-dot w-4 h-4 rounded-full bg-[#facc15] border border-white/30 hover:scale-110 transition" title="Yellow"></button>
+                    <button onclick="setPdfColor('#38bdf8')" class="pdf-color-dot w-4 h-4 rounded-full bg-[#38bdf8] border border-white/30 hover:scale-110 transition" title="Cyan"></button>
+                    <button onclick="setPdfColor('#fb7185')" class="pdf-color-dot w-4 h-4 rounded-full bg-[#fb7185] border border-white/30 hover:scale-110 transition" title="Pink"></button>
+                    <button onclick="setPdfColor('#ef4444')" class="pdf-color-dot w-4 h-4 rounded-full bg-[#ef4444] border border-white/30 hover:scale-110 transition" title="Red"></button>
+                    <button onclick="setPdfColor('#0f172a')" class="pdf-color-dot w-4 h-4 rounded-full bg-[#0f172a] border border-white/40 hover:scale-110 transition" title="Black"></button>
+                    <input type="color" id="pdf-color-picker" value="#38bdf8" class="w-5 h-5 rounded cursor-pointer bg-transparent border-0 p-0" title="เลือกสีเอง">
+                  </div>
+
+                  <div class="h-4 w-[1px] bg-[var(--line-2)]"></div>
+
+                  <!-- Size Slider + Preview -->
+                  <div class="flex items-center gap-1.5 tnum">
+                    <span id="pdf-size-dot" class="inline-block rounded-full bg-[#38bdf8] flex-shrink-0" style="width:6px;height:6px;"></span>
+                    <input type="range" id="pdf-size-slider" min="1" max="36" value="4" class="w-16 sm:w-20 accent-[var(--accent)] cursor-pointer">
+                    <span id="pdf-size-label" class="text-[10px] text-[var(--tx3)] w-7">4px</span>
+                  </div>
+                </div>
+
+                <!-- Undo / Redo / Clear / Download -->
+                <div class="flex items-center gap-1">
+                  <button onclick="undoPdfStroke()" class="w-7 h-7 rounded-md bg-[var(--s2)] hover:bg-[var(--s3)] border border-[var(--line)] text-[var(--tx2)] flex items-center justify-center transition" title="ย้อนกลับ (Ctrl+Z)">
+                    <i class="ph ph-arrow-u-up-left text-xs"></i>
+                  </button>
+                  <button onclick="redoPdfStroke()" class="w-7 h-7 rounded-md bg-[var(--s2)] hover:bg-[var(--s3)] border border-[var(--line)] text-[var(--tx2)] flex items-center justify-center transition" title="ทำซ้ำ (Ctrl+Y)">
+                    <i class="ph ph-arrow-u-up-right text-xs"></i>
+                  </button>
+                  <button onclick="clearPdfCurrentPage()" class="w-7 h-7 rounded-md bg-[var(--s2)] hover:bg-[var(--danger-bg)] hover:text-[var(--danger)] border border-[var(--line)] text-[var(--tx3)] flex items-center justify-center transition" title="ล้างเส้นในหน้านี้">
+                    <i class="ph ph-broom text-xs"></i>
+                  </button>
+
+                  <div class="h-4 w-[1px] bg-[var(--line-2)] mx-0.5"></div>
+
+                  <button onclick="downloadOriginalPdf()" class="h-7 px-2 rounded-md bg-[var(--s2)] hover:bg-[var(--s3)] border border-[var(--line)] text-[var(--tx2)] text-[11px] flex items-center gap-1 transition" title="ดาวน์โหลดไฟล์ PDF ต้นฉบับ">
+                    <i class="ph ph-file-pdf text-xs"></i>
+                    <span class="hidden sm:inline">ต้นฉบับ</span>
+                  </button>
+                  <button onclick="exportAnnotatedPdf()" id="pdf-export-btn" class="ohf-btn-primary h-7 px-2.5 rounded-md text-[11px] flex items-center gap-1 whitespace-nowrap" title="ดาวน์โหลดไฟล์ PDF พร้อมลายมือและไฮไลท์">
+                    <i class="ph ph-download-simple text-xs"></i>
+                    <span>โหลด PDF+โน้ต</span>
+                  </button>
+                </div>
+
+              </div>
+
+              <div id="pdf-pages-container" class="relative flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 bg-[var(--bg)] custom-scrollbar flex flex-col items-center"></div>
+              <div class="px-3 py-2 bg-[var(--rail)] border-t border-[var(--line)] flex items-center justify-between gap-2 text-xs tnum flex-shrink-0">
+                <div class="flex items-center gap-1">
+                  <button onclick="zoomPdfSlide(-0.15)" class="w-7 h-7 rounded bg-[var(--s2)] hover:bg-[var(--s3)] border border-[var(--line)] flex items-center justify-center" title="ย่อ"><i class="ph ph-minus"></i></button>
+                  <span id="pdf-zoom-label" class="px-1.5 text-[11px] text-[var(--tx3)]">100%</span>
+                  <button onclick="zoomPdfSlide(0.15)" class="w-7 h-7 rounded bg-[var(--s2)] hover:bg-[var(--s3)] border border-[var(--line)] flex items-center justify-center" title="ขยาย"><i class="ph ph-plus"></i></button>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <button onclick="stepPdfPage(-1)" class="px-2.5 py-1 rounded-lg bg-[var(--s2)] hover:bg-[var(--s3)] border border-[var(--line)] text-[var(--tx)] transition whitespace-nowrap">← ก่อนหน้า</button>
+                  <span class="text-[var(--tx2)] font-semibold whitespace-nowrap"><span id="pdf-curr-page">01</span> / <span id="pdf-total-pages">01</span></span>
+                  <button onclick="stepPdfPage(1)" class="ohf-btn-primary px-2.5 py-1 rounded-lg whitespace-nowrap">ถัดไป →</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Slide Type 2: Image Deck Viewer (with Zoom!) -->
+            <div id="slide-image-viewer" class="hidden flex-1 flex flex-col overflow-hidden">
+              <div class="flex-1 overflow-auto p-4 flex items-center justify-center bg-[var(--bg)] custom-scrollbar">
+                <img id="slide-active-img" src="" alt="Slide page" class="max-w-full max-h-full rounded-lg shadow-xl object-contain transition-transform duration-150 origin-center">
+              </div>
+              <div class="px-3 py-2 bg-[var(--rail)] border-t border-[var(--line)] flex items-center justify-between gap-2 text-xs tnum flex-shrink-0">
+                <div class="flex items-center gap-1">
+                  <button onclick="zoomImageSlide(-0.15)" class="w-7 h-7 rounded bg-[var(--s2)] hover:bg-[var(--s3)] border border-[var(--line)] flex items-center justify-center" title="ย่อ"><i class="ph ph-minus"></i></button>
+                  <span id="slide-zoom-label" class="px-1.5 text-[11px] text-[var(--tx3)]">100%</span>
+                  <button onclick="zoomImageSlide(0.15)" class="w-7 h-7 rounded bg-[var(--s2)] hover:bg-[var(--s3)] border border-[var(--line)] flex items-center justify-center" title="ขยาย"><i class="ph ph-plus"></i></button>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button onclick="prevImageSlide()" class="px-2.5 py-1 rounded-lg bg-[var(--s2)] hover:bg-[var(--s3)] border border-[var(--line)] text-[var(--tx)] transition">← ก่อนหน้า</button>
+                  <span id="slide-img-counter" class="text-[var(--tx2)] font-semibold">01 / 01</span>
+                  <button onclick="nextImageSlide()" class="ohf-btn-primary px-2.5 py-1 rounded-lg">ถัดไป →</button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 1: เพิ่มรายวิชาใหม่                                             -->
+  <!-- ===================================================================== -->
+  <div id="add-subject-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="ohf-surface w-full max-w-xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div class="px-5 py-4 border-b border-[var(--line)] flex items-center justify-between bg-[var(--rail)]">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-[var(--accent)]"></span>
+          <h3 class="font-semibold text-sm text-[var(--tx)]">เพิ่มรายวิชาใหม่เข้าคลัง</h3>
+        </div>
+        <button onclick="closeAddSubjectModal()" class="p-1 text-[var(--tx3)] hover:text-[var(--tx)] rounded-lg">
+          <i class="ph ph-x text-base"></i>
+        </button>
+      </div>
+
+      <form id="add-subject-form" class="p-5 overflow-y-auto custom-scrollbar space-y-4 text-xs flex-1">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-[var(--tx2)] mb-1">รหัสวิชา *</label>
+            <input type="text" id="sub-code" placeholder="เช่น ANAT201" required class="ohf-input w-full h-9 px-3 rounded-xl">
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-medium text-[var(--tx2)] mb-1">ชื่อวิชา *</label>
+            <input type="text" id="sub-title" placeholder="เช่น กายวิภาคศาสตร์พื้นฐาน" required class="ohf-input w-full h-9 px-3 rounded-xl">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-medium text-[var(--tx2)] mb-1">หมวดหมู่วิชา *</label>
+            <input type="text" id="sub-category" list="cat-suggestions" placeholder="เช่น วิทยาศาสตร์สุขภาพ, คอมพิวเตอร์" required class="ohf-input w-full h-9 px-3 rounded-xl">
+            <datalist id="cat-suggestions">
+              <option value="วิทยาศาสตร์สุขภาพ"></option>
+              <option value="คอมพิวเตอร์"></option>
+              <option value="คณิตศาสตร์"></option>
+              <option value="วิทยาศาสตร์"></option>
+              <option value="ภาษา"></option>
+            </datalist>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-[var(--tx2)] mb-1">ไอคอน Emoji</label>
+            <input type="text" id="sub-icon" value="📘" maxlength="4" class="ohf-input w-full h-9 px-3 rounded-xl text-center text-base">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-[var(--tx2)] mb-1">ชื่อลิงก์เว็บสรุปแรกในวิชานี้ *</label>
+          <input type="text" id="sub-link-title" placeholder="เช่น บทที่ 1: สรุปภาพรวมทั้งหมด" required class="ohf-input w-full h-9 px-3 rounded-xl">
+        </div>
+
+        <!-- Source Type Selector -->
+        <div class="space-y-2 p-3 rounded-xl bg-[var(--rail)] border border-[var(--line)]">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-medium text-[var(--tx2)]">แหล่งที่มาของเว็บสรุป *</label>
+            <div class="flex gap-1 bg-[var(--bg)] p-0.5 rounded-lg border border-[var(--line)]">
+              <button type="button" onclick="setSubSourceMode('url')" id="sub-mode-url" class="px-2 py-0.5 rounded bg-[var(--s3)] text-[var(--tx)] text-[11px]">ใส่ลิงก์ URL</button>
+              <button type="button" onclick="setSubSourceMode('html')" id="sub-mode-html" class="px-2 py-0.5 rounded text-[var(--tx3)] text-[11px]">อัปโหลด / วางโค้ด HTML</button>
+            </div>
+          </div>
+
+          <div id="sub-url-group">
+            <input type="text" id="sub-link-url" placeholder="https://... หรือ subjects/..." class="ohf-input w-full h-9 px-3 rounded-xl font-mono">
+          </div>
+
+          <div id="sub-html-group" class="hidden space-y-2">
+            <input type="file" id="sub-html-file" accept=".html,.htm" class="block w-full text-[11px] text-[var(--tx2)] file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-[var(--s3)] file:text-[var(--tx)] cursor-pointer">
+            <textarea id="sub-html-code" rows="3" placeholder="วางโค้ด <!DOCTYPE html>... ของเว็บสรุปทั้งหมด เพื่อสร้างหน้าพรีวิวจริงในตัว" class="ohf-input w-full p-2.5 rounded-xl font-mono text-[11px]"></textarea>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-[var(--tx2)] mb-1">คำอธิบายวิชาสั้นๆ</label>
+          <textarea id="sub-desc" rows="2" placeholder="สรุปเนื้อหาสำคัญของวิชานี้..." class="ohf-input w-full p-2.5 rounded-xl"></textarea>
+        </div>
+
+        <div id="sub-code-box" class="hidden bg-[var(--bg)] p-3 rounded-xl border border-[var(--line)]">
+          <span class="text-[var(--accent)] font-medium block mb-1">✓ โค้ดสำหรับ data.js:</span>
+          <pre id="sub-code-pre" class="text-[11px] font-mono text-[var(--tx2)] overflow-x-auto"></pre>
+        </div>
+
+        <div class="pt-2 flex flex-col sm:flex-row gap-2">
+          <button type="submit" class="ohf-btn-primary flex-1 h-9 px-4 rounded-xl text-xs">
+            บันทึกวิชาและแสดงพรีวิวทันที
+          </button>
+          <button type="button" id="sub-copy-btn" class="h-9 px-4 bg-[var(--s2)] hover:bg-[var(--s3)] border border-[var(--line-2)] text-[var(--tx)] rounded-xl font-medium transition-colors">
+            คัดลอกโค้ด
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 2: เพิ่ม / แก้ไขลิงก์ (Add or Edit/Upgrade Link with HTML)     -->
+  <!-- ===================================================================== -->
+  <div id="add-link-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="ohf-surface w-full max-w-lg rounded-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div class="px-5 py-4 border-b border-[var(--line)] flex items-center justify-between bg-[var(--rail)]">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-[var(--accent)]"></span>
+          <h3 id="lnk-modal-heading" class="font-semibold text-sm text-[var(--tx)]">เพิ่มลิงก์บทเรียนในวิชานี้</h3>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="closeAddLinkModal(); openAddSlideModal();" class="text-[11px] px-2 py-1 rounded-lg bg-[var(--s2)] hover:bg-[var(--s3)] border border-[var(--line)] text-[var(--accent)] transition">
+            สลับไปเพิ่มสไลด์ →
+          </button>
+          <button onclick="closeAddLinkModal()" class="p-1 text-[var(--tx3)] hover:text-[var(--tx)] rounded-lg">
+            <i class="ph ph-x text-base"></i>
+          </button>
+        </div>
+      </div>
+
+      <form id="add-link-form" class="p-5 overflow-y-auto custom-scrollbar space-y-4 text-xs">
+        <input type="hidden" id="lnk-edit-id" value="">
+
+        <!-- Subject Selector + Lock Toggle -->
+        <div class="p-3 rounded-xl bg-[var(--rail)] border border-[var(--line)] space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-medium text-[var(--tx2)]">เลือกรายวิชาปลายทาง *</label>
+            <button type="button" onclick="toggleSubjectLock()" id="lnk-lock-btn" class="px-2 py-0.5 rounded-md border border-[var(--line-2)] bg-[var(--s2)] text-[var(--tx2)] text-[11px] flex items-center gap-1 transition">
+              <i class="ph ph-lock-open"></i><span>ล็อควิชานี้ไว้</span>
+            </button>
+          </div>
+          <select id="lnk-subject-select" class="ohf-input w-full h-9 px-3 rounded-xl text-xs font-medium"></select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-[var(--tx2)] mb-1">ชื่อบทเรียน / ชื่อลิงก์ *</label>
+          <input type="text" id="lnk-title" placeholder="เช่น บทที่ 2: เกมทายรอยโรค, กราฟ HU, หรือสรุปเนื้อหา" required class="ohf-input w-full h-9 px-3 rounded-xl">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-[var(--tx2)] mb-1">รายละเอียดสั้นๆ</label>
+          <input type="text" id="lnk-subtitle" placeholder="เช่น สรุปภาพรังสีทรวงอกและแบบฝึกหัด" class="ohf-input w-full h-9 px-3 rounded-xl">
+        </div>
+
+        <!-- Source Mode: URL vs HTML -->
+        <div class="space-y-2 p-3 rounded-xl bg-[var(--rail)] border border-[var(--line)]">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-medium text-[var(--tx2)]">แหล่งที่มาของลิงก์ *</label>
+            <div class="flex gap-1 bg-[var(--bg)] p-0.5 rounded-lg border border-[var(--line)]">
+              <button type="button" onclick="setLnkSourceMode('url')" id="lnk-mode-url" class="px-2 py-0.5 rounded bg-[var(--s3)] text-[var(--tx)] text-[11px]">ใส่ลิงก์ URL</button>
+              <button type="button" onclick="setLnkSourceMode('html')" id="lnk-mode-html" class="px-2 py-0.5 rounded text-[var(--tx3)] text-[11px]">อัปโหลด / วางโค้ด HTML</button>
+            </div>
+          </div>
+
+          <div id="lnk-url-group">
+            <input type="text" id="lnk-url" placeholder="https://... หรือ subjects/..." class="ohf-input w-full h-9 px-3 rounded-xl font-mono">
+          </div>
+
+          <div id="lnk-html-group" class="hidden space-y-2">
+            <input type="file" id="lnk-html-file" accept=".html,.htm" class="block w-full text-[11px] text-[var(--tx2)] file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-[var(--s3)] file:text-[var(--tx)] cursor-pointer">
+            <textarea id="lnk-html-code" rows="4" placeholder="ก๊อปโค้ด HTML จาก Qwen / Claude / ChatGPT มาวางตรงนี้เพื่อให้ฝังอ่านคู่กับสไลด์ได้ 100%" class="ohf-input w-full p-2.5 rounded-xl font-mono text-[11px]"></textarea>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-[var(--tx2)] mb-1">ประเภท</label>
+            <input type="text" id="lnk-type" value="Web Summary" class="ohf-input w-full h-9 px-3 rounded-xl">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-[var(--tx2)] mb-1">ป้ายแท็ก (Badge)</label>
+            <input type="text" id="lnk-badge" value="ใหม่" class="ohf-input w-full h-9 px-3 rounded-xl">
+          </div>
+        </div>
+
+        <div id="lnk-code-box" class="hidden bg-[var(--bg)] p-3 rounded-xl border border-[var(--line)]">
+          <span class="text-[var(--accent)] font-medium block mb-1">✓ โค้ดลิงก์สำหรับ data.js:</span>
+          <pre id="lnk-code-pre" class="text-[11px] font-mono text-[var(--tx2)] overflow-x-auto"></pre>
+        </div>
+
+        <div class="pt-2 flex flex-col sm:flex-row gap-2">
+          <button type="submit" id="lnk-submit-btn" class="ohf-btn-primary flex-1 h-9 px-4 rounded-xl text-xs">
+            บันทึกและเปิดพรีวิวทันที
+          </button>
+          <button type="button" id="lnk-copy-btn" class="h-9 px-4 bg-[var(--s2)] hover:bg-[var(--s3)] border border-[var(--line-2)] text-[var(--tx)] rounded-xl font-medium transition-colors">
+            คัดลอกโค้ด
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 3: เพิ่มสไลด์เรียน (PDF / Image Deck / Google Slides URL)         -->
+  <!-- ===================================================================== -->
+  <div id="add-slide-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="ohf-surface w-full max-w-lg rounded-2xl overflow-hidden flex flex-col">
+      <div class="px-5 py-4 border-b border-[var(--line)] flex items-center justify-between bg-[var(--rail)]">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-[var(--accent)]"></span>
+          <h3 class="font-semibold text-sm text-[var(--tx)]">เพิ่มสไลด์เรียนสำหรับอ่านเทียบข้างๆ</h3>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="closeAddSlideModal(); openAddLinkModal();" class="text-[11px] px-2 py-1 rounded-lg bg-[var(--s2)] hover:bg-[var(--s3)] border border-[var(--line)] text-[var(--accent)] transition">
+            สลับไปเพิ่มลิงก์เว็บ →
+          </button>
+          <button onclick="closeAddSlideModal()" class="p-1 text-[var(--tx3)] hover:text-[var(--tx)] rounded-lg">
+            <i class="ph ph-x text-base"></i>
+          </button>
+        </div>
+      </div>
+
+      <form id="add-slide-form" class="p-5 space-y-4 text-xs">
+        <!-- Subject Selector + Lock Toggle -->
+        <div class="p-3 rounded-xl bg-[var(--rail)] border border-[var(--line)] space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-medium text-[var(--tx2)]">เลือกรายวิชาสำหรับสไลด์นี้ *</label>
+            <button type="button" onclick="toggleSubjectLock()" id="sl-lock-btn" class="px-2 py-0.5 rounded-md border border-[var(--line-2)] bg-[var(--s2)] text-[var(--tx2)] text-[11px] flex items-center gap-1 transition">
+              <i class="ph ph-lock-open"></i><span>ล็อควิชานี้ไว้</span>
+            </button>
+          </div>
+          <select id="sl-subject-select" class="ohf-input w-full h-9 px-3 rounded-xl text-xs font-medium"></select>
+        </div>
+
+        <div class="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-[var(--rail)] border border-[var(--line)]">
+          <button type="button" onclick="setSlideTypeTab('pdf')" id="sl-tab-pdf" class="py-1.5 rounded-lg bg-[var(--s3)] text-[var(--tx)] font-medium transition">ไฟล์ PDF</button>
+          <button type="button" onclick="setSlideTypeTab('images')" id="sl-tab-images" class="py-1.5 rounded-lg text-[var(--tx3)] font-medium transition">รูปสไลด์หลายแผ่น</button>
+          <button type="button" onclick="setSlideTypeTab('url')" id="sl-tab-url" class="py-1.5 rounded-lg text-[var(--tx3)] font-medium transition">ลิงก์ Slides / Web</button>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-[var(--tx2)] mb-1">ชื่อชุดสไลด์ *</label>
+          <input type="text" id="sl-title" placeholder="เช่น Lecture 02: Thoracic Pathology" required class="ohf-input w-full h-9 px-3 rounded-xl">
+        </div>
+
+        <div id="sl-panel-pdf" class="space-y-2">
+          <label class="block text-xs font-medium text-[var(--tx2)]">เลือกไฟล์ PDF สไลด์อาจารย์จากเครื่อง *</label>
+          <input type="file" id="sl-pdf-file" accept=".pdf" class="block w-full text-xs text-[var(--tx2)] file:mr-3 file:py-2 file:px-3.5 file:rounded-xl file:border-0 file:bg-[var(--s3)] file:text-[var(--tx)] file:font-medium cursor-pointer border border-dashed border-[var(--line-2)] rounded-xl p-2">
+        </div>
+
+        <div id="sl-panel-images" class="hidden space-y-2">
+          <label class="block text-xs font-medium text-[var(--tx2)]">เลือกรูปภาพหน้าสไลด์ (เลือกหลายรูปพร้อมกันได้) *</label>
+          <input type="file" id="sl-img-files" accept="image/*" multiple class="block w-full text-xs text-[var(--tx2)] file:mr-3 file:py-2 file:px-3.5 file:rounded-xl file:border-0 file:bg-[var(--s3)] file:text-[var(--tx)] file:font-medium cursor-pointer border border-dashed border-[var(--line-2)] rounded-xl p-2">
+        </div>
+
+        <div id="sl-panel-url" class="hidden space-y-2">
+          <label class="block text-xs font-medium text-[var(--tx2)]">ลิงก์ Google Slides / Canva / PDF URL / Local Path *</label>
+          <input type="text" id="sl-url-input" placeholder="https://docs.google.com/presentation/d/... หรือ subjects/..." class="ohf-input w-full h-9 px-3 rounded-xl font-mono">
+        </div>
+
+        <button type="submit" class="ohf-btn-primary w-full h-9 px-4 rounded-xl text-xs">
+          เพิ่มสไลด์และเปิดอ่านเทียบข้างๆ ทันที
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Studio Toast + Undo Bar -->
+  <div id="toast" class="hidden fixed bottom-5 right-5 z-50 ohf-bar rounded-xl overflow-hidden min-w-[260px]">
+    <div class="px-4 py-2.5 flex items-center justify-between gap-3 text-xs font-medium text-[var(--tx)]">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-[var(--accent)] flex-shrink-0"></span>
+        <span id="toast-msg">ดำเนินการเรียบร้อย</span>
+      </div>
+      <button id="toast-undo-btn" class="hidden px-2.5 py-1 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] font-semibold text-[11px] hover:bg-[var(--accent-strong)]">
+        เลิกทำ
+      </button>
+    </div>
+    <div id="toast-progress" class="h-[2px] w-full bg-[var(--accent)] ohf-drain-bar"></div>
+  </div>
+
+  <!-- Footer with Backup Export/Import & Reset -->
+  <footer id="main-footer" class="border-t border-[var(--line)] py-3.5 text-xs text-[var(--tx3)] mt-auto">
+    <div class="max-w-[1480px] mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <p><b class="text-[var(--tx)]">StudyVault</b> — OpenHiggsfield Studio Edition</p>
+      <div class="flex items-center gap-3 flex-wrap">
+        <button onclick="exportBackupJSON()" class="hover:text-[var(--tx)] transition-colors flex items-center gap-1"><i class="ph ph-download-simple"></i> ส่งออกข้อมูล</button>
+        <span>•</span>
+        <label class="hover:text-[var(--tx)] transition-colors cursor-pointer flex items-center gap-1">
+          <i class="ph ph-upload-simple"></i> นำเข้าข้อมูล
+          <input type="file" id="import-backup-input" accept=".json" class="hidden">
+        </label>
+        <span>•</span>
+        <button onclick="resetToDefaultData()" class="hover:text-[var(--danger)] transition-colors">รีเซ็ตค่าเริ่มต้น</button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="db.js"></script>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
