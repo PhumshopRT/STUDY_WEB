@@ -1,6 +1,8 @@
 <div align="center">
 
-# 📚 StudyVault — คลังบทเรียนและสไลด์อ่านเทียบข้างๆ
+<img src="icons/logo.png" alt="Study Hub Logo" width="110" height="110" />
+
+# StudyVault (Study Hub Year 2) — คลังบทเรียนและสไลด์อ่านเทียบข้างๆ
 
 **ศูนย์รวมเว็บสรุปบทเรียนและสไลด์เรียนแบบ Side-by-Side พร้อมระบบจดโน้ตบน PDF สไตล์ GoodNotes**  
 *ดีไซน์สว่างสดใส สบายตา (Airy Daylight Porcelain &amp; Luminous Midnight Cobalt)*
@@ -54,13 +56,17 @@ flowchart LR
 
 ```text
 STUDY_WEB/
-├── index.html      # หน้าหลัก (Daylight Porcelain & Midnight Navy UI + GoodNotes Toolbar)
-├── app.js          # ตรรกะหลัก (Subject CRUD, Subject Lock, Split Resizer, PDF Studio)
-├── data.js         # ข้อมูลรายวิชาเริ่มต้น (RADP301 วิชารังสีพยาธิ)
-├── db.js           # IndexedDB Wrapper สำหรับเก็บ PDF, รูปสไลด์, HTML และลายมือโน้ต
-├── start.bat       # ตัวเปิดเว็บจำลองในเครื่อง Windows (localhost:3000) แบบคลิกเดียว
-├── .nojekyll       # ปิดการกรองไฟล์ของ Jekyll บน GitHub Pages
-└── README.md       # คู่มือการใช้งาน
+├── index.html            # หน้าหลัก (Daylight Porcelain & Midnight Navy UI + GoodNotes Toolbar)
+├── app.js                # ตรรกะหลัก (Subject CRUD, Subject Lock, Split Resizer, PDF Studio)
+├── data.js               # ข้อมูลรายวิชาเริ่มต้น (RADP301 วิชารังสีพยาธิ)
+├── db.js                 # IndexedDB Wrapper สำหรับเก็บ PDF, รูปสไลด์, HTML และลายมือโน้ต
+├── site.webmanifest      # Web App Manifest (Chrome PWA & Home Screen App Info)
+├── apple-touch-icon.png  # ไอคอน Safari Add to Home Screen (iPhone/iPad 180x180)
+├── favicon.ico           # Favicon มาตรฐานสำหรับเบราว์เซอร์ (16/32/48/64)
+├── icons/                # ชุดโลโก้เว็บไซต์และไอคอน PWA (PNG 16x16 – 512x512)
+├── start.bat             # ตัวเปิดเว็บจำลองในเครื่อง Windows (localhost:3000) แบบคลิกเดียว
+├── .nojekyll             # ปิดการกรองไฟล์ของ Jekyll บน GitHub Pages
+└── README.md             # คู่มือการใช้งาน
 ```
 
 ---

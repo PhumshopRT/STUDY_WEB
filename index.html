@@ -6,6 +6,19 @@
   <meta name="theme-color" content="#f4f6fb">
   <title>StudyVault — คลังบทเรียนและสไลด์อ่านเทียบข้างๆ</title>
 
+  <!-- Browser Tab Favicons (Chrome / Edge / Firefox) & Safari Add to Home Screen -->
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="apple-touch-icon-precomposed" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Study Hub">
+  <meta name="application-name" content="Study Hub">
+
   <!-- Typography: Inter + Prompt -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -244,11 +257,12 @@
       
       <!-- Left Pill: Brand + Category Scope Tabs -->
       <div class="sv-bar pointer-events-auto h-12 rounded-2xl px-2 flex items-center gap-2 max-w-full overflow-x-auto custom-scrollbar">
-        <button onclick="navigateHome()" class="flex items-center gap-2.5 px-2 py-1 rounded-xl hover:bg-[var(--s3)] transition-colors flex-shrink-0">
-          <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center text-white text-sm shadow-sm">
-            <i class="ph ph-books"></i>
+        <button onclick="navigateHome()" class="flex items-center gap-2.5 px-1.5 py-1 rounded-xl hover:bg-[var(--s3)] transition-colors flex-shrink-0">
+          <img src="icons/icon-192.png" alt="Study Hub Year 2 Logo" class="w-8 h-8 rounded-xl shadow-sm object-contain flex-shrink-0">
+          <div class="text-left leading-tight">
+            <span class="font-bold text-sm tracking-tight text-[var(--tx)] block">Study Hub</span>
+            <span class="text-[10px] font-medium text-[var(--tx3)] hidden sm:block">StudyVault · Year 2</span>
           </div>
-          <span class="font-bold text-sm tracking-tight text-[var(--tx)]">StudyVault</span>
         </button>
 
         <div class="h-5 w-[1px] bg-[var(--line-2)] flex-shrink-0"></div>
