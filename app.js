@@ -28,7 +28,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const blobUrlCache = new Map();
 
   // Storage Keys
-  const LS_THEME = "studyvault_theme_v2";
+  const LS_THEME = "studyvault_theme_v3";
   const LS_FAVORITES = "studyvault_favorites";
   const LS_CUSTOM_SUBJECTS = "studyvault_custom_subjects";
   const LS_DELETED_SUBJECTS = "studyvault_deleted_subjects";
@@ -258,13 +258,13 @@ document.addEventListener("DOMContentLoaded", () => {
     window._toastTimer = setTimeout(() => toastEl.classList.add("hidden"), 6000);
   }
 
-  // 1. Theme (Default: Airy Daylight Porcelain, Toggle -> Midnight Cobalt Navy)
+  // 1. Theme (Default: Obsidian Black Studio, Toggle -> Airy Daylight Porcelain)
   function applyThemeUI(isDark) {
     if (isDark) {
       htmlRoot.classList.add("dark");
       themeIcon.className = "ph ph-sun text-sm text-amber-300";
       if (themeLabel) themeLabel.textContent = "โหมดสว่าง";
-      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#0b1120");
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#050507");
     } else {
       htmlRoot.classList.remove("dark");
       themeIcon.className = "ph ph-moon text-sm text-indigo-600";
@@ -275,7 +275,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function initTheme() {
     const saved = localStorage.getItem(LS_THEME);
-    applyThemeUI(saved === "dark");
+    applyThemeUI(saved !== "light");
   }
 
   themeToggleBtn.addEventListener("click", () => {

@@ -5,7 +5,7 @@
 # StudyVault (Study Hub Year 2) — คลังบทเรียนและสไลด์อ่านเทียบข้างๆ
 
 **ศูนย์รวมเว็บสรุปบทเรียนและสไลด์เรียนแบบ Side-by-Side พร้อมระบบจดโน้ตบน PDF สไตล์ GoodNotes**  
-*ดีไซน์สว่างสดใส สบายตา (Airy Daylight Porcelain &amp; Luminous Midnight Cobalt)*
+*ดีไซน์ธีมดำ Obsidian Studio สุดคมชัด พร้อมสลับเป็นโหมดสว่างได้ (Obsidian Black Studio &amp; Airy Daylight Porcelain)*
 
 [![Live Demo](https://img.shields.io/badge/🌐_Live_Site-GitHub_Pages-4f46e5?style=for-the-badge&labelColor=f4f6fb)](https://phumshoprt.github.io/STUDY_WEB/)
 [![PDF Studio](https://img.shields.io/badge/PDF_Engine-PDF.js_+_pdf--lib-38bdf8?style=for-the-badge&labelColor=0b1120)](https://mozilla.github.io/pdf.js/)
