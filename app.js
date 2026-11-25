@@ -14,6 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let activeLinkId = null;
   let activeSlideId = null;
   let isSplitMode = false;
+  let isSlideExpanded = false;
   let isSwappedSides = false;
   let splitLeftPct = 50;
   let currentImageSlideIdx = 0;
@@ -377,6 +378,38 @@ document.addEventListener("DOMContentLoaded", () => {
       const firstLink = sub.links[0];
       const primaryUrl = firstLink?.idbKey ? "embedded-html://summary" : (firstLink?.url || "");
 
+      const slidesQuickTray = sub.slides.length > 0 ? `
+        <div class="pt-2.5 border-t border-[var(--line)] space-y-1.5" onclick="event.stopPropagation()">
+          <div class="flex items-center justify-between text-[11px]">
+            <span class="font-semibold text-[var(--tx2)] flex items-center gap-1">
+              <i class="ph ph-presentation-chart text-pink-400"></i>
+              <span>เลือกสไลด์อ่าน (${sub.slides.length})</span>
+            </span>
+            <button onclick="openAddSlideModalForSubject('${sub.id}')" class="text-[10px] font-medium text-[var(--tx3)] hover:text-[var(--accent)] transition">+ เพิ่ม</button>
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            ${sub.slides.slice(0, 4).map(sl => `
+              <button onclick="openSubjectSlide('${sub.id}', '${sl.id}')" class="max-w-full px-2.5 py-1 rounded-lg bg-[var(--rail)] hover:bg-[var(--s3)] border border-[var(--line-2)] hover:border-[var(--accent-32)] text-[11px] font-medium text-[var(--tx)] hover:text-[var(--accent)] flex items-center gap-1.5 transition truncate" title="เปิดสไลด์ ${sl.title}">
+                <i class="ph ${sl.type === 'pdf' ? 'ph-file-pdf text-rose-400' : sl.type === 'images' ? 'ph-images text-sky-400' : 'ph-presentation-chart text-amber-400'} text-xs flex-shrink-0"></i>
+                <span class="truncate max-w-[170px]">${sl.title}</span>
+              </button>
+            `).join("")}
+            ${sub.slides.length > 4 ? `<button onclick="openSubjectSlide('${sub.id}')" class="px-2 py-1 rounded-lg bg-[var(--s3)] text-[10px] font-semibold text-[var(--accent)]">+${sub.slides.length - 4} สไลด์</button>` : ""}
+          </div>
+        </div>
+      ` : `
+        <div class="pt-2.5 border-t border-[var(--line)] flex items-center justify-between gap-2" onclick="event.stopPropagation()">
+          <span class="text-[11px] text-[var(--tx3)] flex items-center gap-1">
+            <i class="ph ph-presentation-chart"></i>
+            <span>ยังไม่มีสไลด์</span>
+          </span>
+          <button onclick="openAddSlideModalForSubject('${sub.id}')" class="px-2.5 py-1 rounded-lg bg-[var(--accent-08)] hover:bg-[var(--accent-14)] border border-[var(--accent-32)] text-[11px] font-medium text-[var(--accent)] flex items-center gap-1 transition">
+            <i class="ph ph-plus text-xs"></i>
+            <span>เพิ่มสไลด์</span>
+          </button>
+        </div>
+      `;
+
       return `
       <article 
         onclick="openSubject('${sub.id}')"
@@ -403,14 +436,14 @@ document.addEventListener("DOMContentLoaded", () => {
             ${previewSrc ? `
               <iframe src="${previewSrc}" class="preview-iframe-scale" loading="lazy" tabindex="-1" sandbox="allow-scripts allow-same-origin"></iframe>
             ` : `
-              <!-- Bright, Clean Subject Visual Card when no embedded HTML yet -->
+              <!-- Clean Subject Visual Card when no embedded HTML yet -->
               <div class="w-full h-full p-5 flex flex-col items-center justify-center text-center bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-pink-500/10">
                 <div class="w-14 h-14 rounded-2xl bg-gradient-to-br ${sub.accent || 'from-indigo-500 to-purple-500'} flex items-center justify-center text-white text-2xl shadow-lg mb-3">
                   ${sub.icon || '📘'}
                 </div>
                 <span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[var(--s1)] border border-[var(--line)] text-[var(--accent)] mb-1.5 tnum">${sub.code}</span>
                 <p class="text-xs font-semibold text-[var(--tx)] line-clamp-1 max-w-[240px]">${firstLink ? firstLink.title : sub.title}</p>
-                <p class="text-[11px] text-[var(--tx3)] mt-1">${firstLink ? 'กดเข้าวิชาเพื่อเปิดอ่านหรือวางโค้ด HTML' : 'คลิกเพื่อเพิ่มลิงก์หรือสไลด์ PDF'}</p>
+                <p class="text-[11px] text-[var(--tx3)] mt-1">${firstLink ? 'กดเข้าวิชาเพื่อเปิดอ่าน หรือเลือกสไลด์ด้านล่าง' : 'คลิกเพื่อเพิ่มลิงก์หรือสไลด์ PDF'}</p>
               </div>
             `}
 
@@ -423,7 +456,7 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
         </div>
 
-        <!-- BOTTOM METADATA + VISIBLE DELETE BUTTON -->
+        <!-- BOTTOM METADATA + SLIDE PICKER + DELETE BUTTON -->
         <div class="p-4 sm:p-5 flex-1 flex flex-col justify-between gap-3">
           <div class="space-y-2.5">
             <div class="flex items-center justify-between gap-2">
@@ -454,14 +487,24 @@ document.addEventListener("DOMContentLoaded", () => {
             </div>
           </div>
 
+          ${slidesQuickTray}
+
           <div class="pt-3 border-t border-[var(--line)] flex items-center justify-between gap-2 tnum">
             <div class="flex items-center gap-3 text-[11px] text-[var(--tx2)]">
               <span class="flex items-center gap-1"><i class="ph ph-link-simple text-[var(--accent)]"></i> ${sub.links.length} ลิงก์</span>
               <span class="flex items-center gap-1"><i class="ph ph-presentation-chart text-pink-500"></i> ${sub.slides.length} สไลด์</span>
             </div>
-            <span class="text-xs font-semibold text-[var(--accent)] flex items-center gap-1">
-              <span>เข้าดูวิชา</span><i class="ph ph-caret-right"></i>
-            </span>
+            <div class="flex items-center gap-2">
+              ${sub.slides.length > 0 ? `
+                <button onclick="event.stopPropagation(); openSubjectSlide('${sub.id}')" class="px-2.5 py-1 rounded-lg bg-[var(--s3)] hover:bg-[var(--s4)] border border-[var(--accent-32)] text-[11px] font-semibold text-[var(--accent)] flex items-center gap-1 transition">
+                  <i class="ph ph-book-open-text text-xs"></i>
+                  <span>อ่านสไลด์</span>
+                </button>
+              ` : ""}
+              <span class="text-xs font-semibold text-[var(--tx2)] group-hover:text-[var(--accent)] flex items-center gap-0.5 transition-colors">
+                <span>เข้าดูวิชา</span><i class="ph ph-caret-right"></i>
+              </span>
+            </div>
           </div>
         </div>
       </article>
@@ -544,12 +587,31 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   };
 
-  // 5. Level 2: Subject Workspace
-  window.openSubject = function(subjectId, updateHash = true) {
+  // 5. Level 2: Subject Workspace + Direct Slide Entry
+  window.openSubjectSlide = function(subjectId, slideId = null) {
+    openSubject(subjectId, true, { openSlides: true, slideId });
+  };
+
+  window.openAddSlideModalForSubject = function(subjectId) {
+    if (allSubjects.length === 0) {
+      document.getElementById("open-add-subject-btn").click();
+      return;
+    }
+    syncSubjectSelects(subjectId);
+    addSlideModal.classList.remove("hidden");
+  };
+
+  window.openSubject = function(subjectId, updateHash = true, options = {}) {
     const sub = allSubjects.find(s => s.id === subjectId);
     if (!sub) return;
 
     activeSubjectId = subjectId;
+    if (options.openSlides) {
+      isSplitMode = true;
+      isSlideExpanded = Boolean(options.expandSlides);
+    } else {
+      isSlideExpanded = false;
+    }
     if (updateHash) window.location.hash = `subject/${subjectId}`;
 
     wsIcon.className = `w-9 h-9 rounded-xl bg-gradient-to-br ${sub.accent || 'from-indigo-500 to-purple-500'} flex items-center justify-center text-white text-base shadow-sm flex-shrink-0`;
@@ -559,6 +621,9 @@ document.addEventListener("DOMContentLoaded", () => {
     wsTitle.textContent = sub.title;
     wsDesc.textContent = sub.description || `คลังสรุปและสไลด์เรียนวิชา ${sub.title}`;
     wsDeleteSubjectBtn.onclick = () => deleteSubject(subjectId);
+
+    viewHome.classList.add("hidden");
+    viewSubject.classList.remove("hidden");
 
     updateWorkspaceStar();
     renderWorkspaceLinks(sub);
@@ -573,15 +638,18 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (sub.slides.length > 0) {
-      const keepSlide = sub.slides.some(sl => sl.id === activeSlideId);
-      selectSlide(keepSlide ? activeSlideId : sub.slides[0].id, false);
+      const requestedSlide = options.slideId && sub.slides.some(sl => sl.id === options.slideId) ? options.slideId : null;
+      const keepSlide = !requestedSlide && sub.slides.some(sl => sl.id === activeSlideId) ? activeSlideId : null;
+      selectSlide(requestedSlide || keepSlide || sub.slides[0].id, Boolean(options.openSlides));
     } else {
       renderSlideEmpty();
     }
 
-    viewHome.classList.add("hidden");
-    viewSubject.classList.remove("hidden");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (options.openSlides && window.innerWidth < 1024) {
+      requestAnimationFrame(() => wsSlidePane.scrollIntoView({ behavior: "smooth", block: "start" }));
+    } else {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   window.navigateHome = function(updateHash = true) {
@@ -589,6 +657,9 @@ document.addEventListener("DOMContentLoaded", () => {
     activeLinkId = null;
     activeSlideId = null;
     isSplitMode = false;
+    isSlideExpanded = false;
+    activePdfDoc = null;
+    pdfBuildToken++;
     clearTimeout(iframeTimeoutHandle);
     stageIframe.src = "about:blank";
     slideIframe.src = "about:blank";
@@ -844,10 +915,17 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   // =========================================================================
-  // 8. SIDE-BY-SIDE SPLIT MODE + SIDE SWAP + DRAG RESIZER
+  // 8. SIDE-BY-SIDE SPLIT MODE + EXPAND SLIDE + SIDE SWAP + DRAG RESIZER
   // =========================================================================
   window.toggleSplitMode = function(forceState = null) {
     isSplitMode = forceState !== null ? forceState : !isSplitMode;
+    if (!isSplitMode) isSlideExpanded = false;
+    applySplitModeLayout();
+  };
+
+  window.toggleSlideExpand = function(forceState = null) {
+    if (!isSplitMode) isSplitMode = true;
+    isSlideExpanded = forceState !== null ? forceState : !isSlideExpanded;
     applySplitModeLayout();
   };
 
@@ -861,41 +939,67 @@ document.addEventListener("DOMContentLoaded", () => {
   function applySplitModeLayout() {
     const sub = allSubjects.find(s => s.id === activeSubjectId);
     wsSlidesBadge.textContent = sub ? sub.slides.length : 0;
+    const expandBtn = document.getElementById("slide-expand-btn");
 
     if (isSplitMode) {
       wsSplitToggleBtn.className = "sv-btn-primary h-8 px-3 rounded-xl text-xs flex items-center gap-1.5 transition-all";
-      wsSwapSidesBtn.classList.remove("hidden");
-      wsSwapSidesBtn.classList.add("flex");
       wsSidebar.classList.add("hidden");
       splitLinkSelect.classList.remove("hidden");
-      splitResizer.classList.remove("hidden");
       wsSlidePane.classList.remove("hidden");
       wsSlidePane.classList.add("flex");
 
-      wsWebPane.style.order = isSwappedSides ? "3" : "1";
-      splitResizer.style.order = "2";
-      wsSlidePane.style.order = isSwappedSides ? "1" : "3";
-
-      const leftVal = Math.max(25, Math.min(75, splitLeftPct));
-      if (isSwappedSides) {
-        wsSlidePane.style.flex = `0 0 ${leftVal}%`;
-        wsWebPane.style.flex = `1 1 ${100 - leftVal}%`;
+      if (isSlideExpanded) {
+        wsWebPane.classList.add("hidden");
+        splitResizer.classList.add("hidden");
+        wsSwapSidesBtn.classList.add("hidden");
+        wsSwapSidesBtn.classList.remove("flex");
+        wsSlidePane.style.order = "1";
+        wsSlidePane.style.flex = "1 1 100%";
+        if (expandBtn) {
+          expandBtn.innerHTML = `<i class="ph ph-arrows-in-simple text-sm"></i><span class="hidden sm:inline">เทียบข้าง</span>`;
+          expandBtn.className = "h-7 px-2 rounded-lg flex items-center gap-1 bg-[var(--accent)] text-white text-[11px] font-medium transition-colors";
+        }
       } else {
-        wsWebPane.style.flex = `0 0 ${leftVal}%`;
-        wsSlidePane.style.flex = `1 1 ${100 - leftVal}%`;
+        wsWebPane.classList.remove("hidden");
+        splitResizer.classList.remove("hidden");
+        wsSwapSidesBtn.classList.remove("hidden");
+        wsSwapSidesBtn.classList.add("flex");
+
+        wsWebPane.style.order = isSwappedSides ? "3" : "1";
+        splitResizer.style.order = "2";
+        wsSlidePane.style.order = isSwappedSides ? "1" : "3";
+
+        const leftVal = Math.max(25, Math.min(75, splitLeftPct));
+        if (isSwappedSides) {
+          wsSlidePane.style.flex = `0 0 ${leftVal}%`;
+          wsWebPane.style.flex = `1 1 ${100 - leftVal}%`;
+        } else {
+          wsWebPane.style.flex = `0 0 ${leftVal}%`;
+          wsSlidePane.style.flex = `1 1 ${100 - leftVal}%`;
+        }
+        if (expandBtn) {
+          expandBtn.innerHTML = `<i class="ph ph-arrows-out-simple text-sm"></i><span class="hidden sm:inline">เต็มจอ</span>`;
+          expandBtn.className = "h-7 px-2 rounded-lg flex items-center gap-1 text-[var(--tx2)] hover:text-[var(--accent)] hover:bg-[var(--s3)] text-[11px] font-medium transition-colors";
+        }
       }
     } else {
+      isSlideExpanded = false;
       wsSplitToggleBtn.className = "sv-surface h-8 px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all text-[var(--tx)]";
       wsSwapSidesBtn.classList.add("hidden");
       wsSwapSidesBtn.classList.remove("flex");
       wsSidebar.classList.remove("hidden");
       splitLinkSelect.classList.add("hidden");
       splitResizer.classList.add("hidden");
+      wsWebPane.classList.remove("hidden");
       wsSlidePane.classList.add("hidden");
       wsSlidePane.classList.remove("flex");
 
       wsWebPane.style.order = "1";
       wsWebPane.style.flex = "1 1 100%";
+      if (expandBtn) {
+        expandBtn.innerHTML = `<i class="ph ph-arrows-out-simple text-sm"></i><span class="hidden sm:inline">เต็มจอ</span>`;
+        expandBtn.className = "h-7 px-2 rounded-lg flex items-center gap-1 text-[var(--tx2)] hover:text-[var(--accent)] hover:bg-[var(--s3)] text-[11px] font-medium transition-colors";
+      }
     }
   }
 
@@ -993,6 +1097,12 @@ document.addEventListener("DOMContentLoaded", () => {
   let lastPdfContainerW = 0;
   let pdfResizeTimer = null;
   let pdfScrollRaf = null;
+  let pdfBuildToken = 0;
+  let pdfIsPinching = false;
+
+  const LS_TOUCH_DRAW = "studyvault_pdf_touch_draw";
+  let pdfTouchDrawEnabled = loadJSON(LS_TOUCH_DRAW, false); // false = 1-finger scroll + Apple Pencil draw (GoodNotes style)
+  let activeStrokeSession = null;
 
   let activePdfTool = "pan";
   let pdfPenColor = "#38bdf8";
@@ -1007,6 +1117,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const pdfSizeSlider = document.getElementById("pdf-size-slider");
   const pdfSizeLabel = document.getElementById("pdf-size-label");
   const pdfSizeDot = document.getElementById("pdf-size-dot");
+  const pdfTouchModeBtn = document.getElementById("pdf-touch-mode-btn");
+  const pdfTouchModeIcon = document.getElementById("pdf-touch-mode-icon");
+  const pdfTouchModeLabel = document.getElementById("pdf-touch-mode-label");
 
   function getActiveToolColor() {
     return activePdfTool === "highlighter" ? pdfHighlightColor : pdfPenColor;
@@ -1030,6 +1143,37 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  function applyInkTouchSettings(inkCanvas) {
+    const isDrawing = activePdfTool !== "pan";
+    inkCanvas.style.pointerEvents = isDrawing ? "auto" : "none";
+    inkCanvas.style.touchAction = isDrawing ? (pdfTouchDrawEnabled ? "none" : "pan-x pan-y") : "auto";
+    inkCanvas.style.cursor = activePdfTool === "eraser" ? "cell" : isDrawing ? "crosshair" : "default";
+  }
+
+  function syncTouchDrawModeUI() {
+    if (!pdfTouchModeBtn) return;
+    if (pdfTouchDrawEnabled) {
+      pdfTouchModeBtn.className = "h-7 px-2 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-emerald-400 text-[11px] font-medium flex items-center gap-1 transition whitespace-nowrap";
+      if (pdfTouchModeIcon) pdfTouchModeIcon.className = "ph ph-hand-pointing text-sm";
+      if (pdfTouchModeLabel) pdfTouchModeLabel.textContent = "นิ้วเขียน";
+    } else {
+      pdfTouchModeBtn.className = "h-7 px-2 rounded-lg border border-[var(--accent-32)] bg-[var(--accent-08)] text-[var(--accent)] text-[11px] font-medium flex items-center gap-1 transition whitespace-nowrap";
+      if (pdfTouchModeIcon) pdfTouchModeIcon.className = "ph ph-hand-swipe-right text-sm";
+      if (pdfTouchModeLabel) pdfTouchModeLabel.textContent = "นิ้วเลื่อน";
+    }
+    pdfPagesContainer.querySelectorAll(".pdf-ink-canvas").forEach(applyInkTouchSettings);
+  }
+
+  window.toggleTouchDrawMode = function() {
+    pdfTouchDrawEnabled = !pdfTouchDrawEnabled;
+    localStorage.setItem(LS_TOUCH_DRAW, JSON.stringify(pdfTouchDrawEnabled));
+    syncTouchDrawModeUI();
+    showToast(pdfTouchDrawEnabled
+      ? "โหมด ☝️ นิ้วเขียน: 1 นิ้วเขียนได้ • 2 นิ้วเลื่อนและซูม"
+      : "โหมด ✋ นิ้วเลื่อน (GoodNotes): 1 นิ้วเลื่อน • Apple Pencil เขียน • 2 นิ้วซูม");
+  };
+  syncTouchDrawModeUI();
+
   window.setPdfTool = function(tool) {
     activePdfTool = tool;
     ["pan", "pen", "highlighter", "eraser"].forEach(t => {
@@ -1042,12 +1186,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-    const isDrawing = tool !== "pan";
-    pdfPagesContainer.querySelectorAll(".pdf-ink-canvas").forEach(c => {
-      c.style.pointerEvents = isDrawing ? "auto" : "none";
-      c.style.touchAction = isDrawing ? "none" : "auto";
-      c.style.cursor = tool === "eraser" ? "cell" : isDrawing ? "crosshair" : "default";
-    });
+    pdfPagesContainer.querySelectorAll(".pdf-ink-canvas").forEach(applyInkTouchSettings);
     syncAnnotationControls();
   };
 
@@ -1156,10 +1295,30 @@ document.addEventListener("DOMContentLoaded", () => {
     return changed;
   }
 
+  function cancelActiveTouchStroke() {
+    if (!activeStrokeSession) return;
+    const sess = activeStrokeSession;
+    activeStrokeSession = null;
+    if (performance.now() - sess.startedAt > 280 && sess.strokeObj?.points?.length > 6) return;
+
+    const arr = pdfAnnotations[sess.pageKey];
+    if (Array.isArray(arr)) {
+      const idx = arr.lastIndexOf(sess.strokeObj);
+      if (idx !== -1) arr.splice(idx, 1);
+    }
+    const uStack = pdfUndoStacks[sess.pageKey];
+    if (Array.isArray(uStack) && uStack.length > 0 && sess.undoSnapshotTaken) {
+      uStack.pop();
+    }
+    if (sess.finishFn) sess.finishFn(true);
+    if (sess.inkCanvas) redrawInkCanvas(sess.inkCanvas, sess.pageKey);
+  }
+
   function bindInkEvents(inkCanvas, pageNum) {
     const pageKey = String(pageNum);
     let drawingStroke = null;
     let isPointerDown = false;
+    let activePointerId = null;
     let eraserSnapshotTaken = false;
     let drawRaf = null;
 
@@ -1179,11 +1338,47 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    inkCanvas.addEventListener("pointerdown", e => {
+    // Lock Apple Pencil stylus touches immediately so iOS Safari never hijacks them to scroll or Scribble
+    inkCanvas.addEventListener("touchstart", e => {
       if (activePdfTool === "pan") return;
+      const hasStylus = Array.from(e.touches).some(t => t.touchType === "stylus");
+      if (hasStylus || (pdfTouchDrawEnabled && e.touches.length === 1)) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    inkCanvas.addEventListener("touchmove", e => {
+      if (activePdfTool === "pan") return;
+      const hasStylus = Array.from(e.touches).some(t => t.touchType === "stylus");
+      if (hasStylus || (pdfTouchDrawEnabled && e.touches.length === 1 && !pdfIsPinching)) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    function finishStroke(canceled = false, e = null) {
+      if (!isPointerDown) return;
+      isPointerDown = false;
+      drawingStroke = null;
+      if (activeStrokeSession && activeStrokeSession.inkCanvas === inkCanvas) {
+        activeStrokeSession = null;
+      }
+      if (e) {
+        try { inkCanvas.releasePointerCapture(e.pointerId); } catch {}
+      }
+      activePointerId = null;
+      if (!canceled) savePdfAnnotations();
+    }
+
+    inkCanvas.addEventListener("pointerdown", e => {
+      if (activePdfTool === "pan" || pdfIsPinching) return;
+      // GoodNotes mode: 1 finger scrolls seamlessly unless Finger Draw mode is explicitly enabled
+      if (e.pointerType === "touch" && !pdfTouchDrawEnabled) return;
+      if (e.button !== undefined && e.button !== 0 && e.pointerType === "mouse") return;
+
       e.preventDefault();
-      inkCanvas.setPointerCapture(e.pointerId);
+      try { inkCanvas.setPointerCapture(e.pointerId); } catch {}
       isPointerDown = true;
+      activePointerId = e.pointerId;
       pdfCurrPage = pageNum;
       pdfCurrPageEl.textContent = String(pageNum).padStart(2, "0");
 
@@ -1211,11 +1406,25 @@ document.addEventListener("DOMContentLoaded", () => {
         points: [pt]
       };
       pdfAnnotations[pageKey].push(drawingStroke);
+
+      if (e.pointerType === "touch") {
+        activeStrokeSession = {
+          pageKey,
+          strokeObj: drawingStroke,
+          startedAt: performance.now(),
+          inkCanvas,
+          undoSnapshotTaken: true,
+          finishFn: canceled => finishStroke(canceled)
+        };
+      } else {
+        activeStrokeSession = null;
+      }
+
       scheduleRedraw();
     });
 
     inkCanvas.addEventListener("pointermove", e => {
-      if (!isPointerDown || activePdfTool === "pan") return;
+      if (!isPointerDown || e.pointerId !== activePointerId || activePdfTool === "pan" || pdfIsPinching) return;
       const pt = getNormPt(e);
 
       if (activePdfTool === "eraser") {
@@ -1242,16 +1451,12 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-    function finishStroke(e) {
-      if (!isPointerDown) return;
-      isPointerDown = false;
-      drawingStroke = null;
-      try { inkCanvas.releasePointerCapture(e.pointerId); } catch {}
-      savePdfAnnotations();
-    }
-
-    inkCanvas.addEventListener("pointerup", finishStroke);
-    inkCanvas.addEventListener("pointercancel", finishStroke);
+    inkCanvas.addEventListener("pointerup", e => {
+      if (e.pointerId === activePointerId) finishStroke(false, e);
+    });
+    inkCanvas.addEventListener("pointercancel", e => {
+      if (e.pointerId === activePointerId) finishStroke(false, e);
+    });
   }
 
   window.undoPdfStroke = function() {
@@ -1354,11 +1559,13 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   const pdfResizeObserver = new ResizeObserver(() => {
-    if (!activePdfDoc || slidePdfViewer.classList.contains("hidden")) return;
+    if (!activePdfDoc || slidePdfViewer.classList.contains("hidden") || pdfIsPinching) return;
     const w = pdfPagesContainer.clientWidth;
-    if (w > 50 && Math.abs(w - lastPdfContainerW) > 12) {
+    if (w > 50 && Math.abs(w - lastPdfContainerW) > 16) {
       clearTimeout(pdfResizeTimer);
-      pdfResizeTimer = setTimeout(() => buildPdfPageSlots(true), 100);
+      pdfResizeTimer = setTimeout(() => {
+        if (!pdfIsPinching && activePdfDoc) buildPdfPageSlots(true);
+      }, 120);
     }
   });
   pdfResizeObserver.observe(pdfPagesContainer);
@@ -1366,7 +1573,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function updatePdfPageCounterFromScroll() {
     if (!activePdfDoc) return;
     const slots = pdfPagesContainer.querySelectorAll(".pdf-page-slot");
-    const threshold = pdfPagesContainer.scrollTop + 48;
+    const threshold = pdfPagesContainer.scrollTop + 60;
     let current = 1;
     for (const slot of slots) {
       if (slot.offsetTop + slot.offsetHeight > threshold) {
@@ -1386,6 +1593,110 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }, { passive: true });
 
+  // iPad 2-Finger Pinch-to-Zoom & 2-Finger Pan + Trackpad Pinch Support
+  let pinchState = null;
+  let wheelZoomTimer = null;
+
+  function getTouchPairMetrics(t1, t2) {
+    return {
+      dist: Math.max(1, Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)),
+      midX: (t1.clientX + t2.clientX) / 2,
+      midY: (t1.clientY + t2.clientY) / 2
+    };
+  }
+
+  pdfPagesContainer.addEventListener("touchstart", e => {
+    if (!activePdfDoc || slidePdfViewer.classList.contains("hidden")) return;
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      cancelActiveTouchStroke();
+      pdfIsPinching = true;
+      const stage = document.getElementById("pdf-zoom-stage");
+      const metrics = getTouchPairMetrics(e.touches[0], e.touches[1]);
+      const rect = pdfPagesContainer.getBoundingClientRect();
+      const localX = metrics.midX - rect.left;
+      const localY = metrics.midY - rect.top;
+      pinchState = {
+        startDist: metrics.dist,
+        startZoom: pdfZoom,
+        targetZoom: pdfZoom,
+        startScrollLeft: pdfPagesContainer.scrollLeft,
+        startScrollTop: pdfPagesContainer.scrollTop,
+        contentX: pdfPagesContainer.scrollLeft + localX,
+        contentY: pdfPagesContainer.scrollTop + localY,
+        lastLocalX: localX,
+        lastLocalY: localY,
+        stage
+      };
+    }
+  }, { passive: false });
+
+  pdfPagesContainer.addEventListener("touchmove", e => {
+    if (!pdfIsPinching || !pinchState || e.touches.length !== 2) return;
+    e.preventDefault();
+    const metrics = getTouchPairMetrics(e.touches[0], e.touches[1]);
+    const rect = pdfPagesContainer.getBoundingClientRect();
+    const curLocalX = metrics.midX - rect.left;
+    const curLocalY = metrics.midY - rect.top;
+    const nextZoom = Math.max(0.6, Math.min(3.0, pinchState.startZoom * (metrics.dist / pinchState.startDist)));
+    const scaleFactor = nextZoom / pinchState.startZoom;
+
+    pinchState.targetZoom = nextZoom;
+    pinchState.lastLocalX = curLocalX;
+    pinchState.lastLocalY = curLocalY;
+
+    if (pinchState.stage) {
+      const tx = (pinchState.startScrollLeft + curLocalX) - pinchState.contentX * scaleFactor;
+      const ty = (pinchState.startScrollTop + curLocalY) - pinchState.contentY * scaleFactor;
+      pinchState.stage.style.transformOrigin = "0 0";
+      pinchState.stage.style.willChange = "transform";
+      pinchState.stage.style.transform = `translate3d(${tx}px, ${ty}px, 0) scale(${scaleFactor})`;
+    }
+    pdfZoomLabel.textContent = `${Math.round(nextZoom * 100)}%`;
+  }, { passive: false });
+
+  async function commitPinchGesture() {
+    if (!pdfIsPinching || !pinchState) return;
+    const state = pinchState;
+    pinchState = null;
+    pdfIsPinching = false;
+
+    const scaleFactor = state.targetZoom / state.startZoom;
+    if (state.stage) {
+      state.stage.style.transform = "";
+      state.stage.style.willChange = "";
+    }
+
+    if (Math.abs(state.targetZoom - state.startZoom) > 0.025) {
+      const targetLeft = Math.max(0, state.contentX * scaleFactor - state.lastLocalX);
+      const targetTop = Math.max(0, state.contentY * scaleFactor - state.lastLocalY);
+      pdfZoom = state.targetZoom;
+      await buildPdfPageSlots(true, { left: targetLeft, top: targetTop });
+    } else {
+      const panLeft = Math.max(0, state.contentX - state.lastLocalX);
+      const panTop = Math.max(0, state.contentY - state.lastLocalY);
+      pdfPagesContainer.scrollTo({ left: panLeft, top: panTop });
+      pdfZoomLabel.textContent = `${Math.round(pdfZoom * 100)}%`;
+    }
+  }
+
+  pdfPagesContainer.addEventListener("touchend", e => {
+    if (pdfIsPinching && e.touches.length < 2) commitPinchGesture();
+  }, { passive: true });
+  pdfPagesContainer.addEventListener("touchcancel", e => {
+    if (pdfIsPinching && e.touches.length < 2) commitPinchGesture();
+  }, { passive: true });
+
+  pdfPagesContainer.addEventListener("wheel", e => {
+    if (!e.ctrlKey || !activePdfDoc || slidePdfViewer.classList.contains("hidden")) return;
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    pdfZoom = Math.max(0.6, Math.min(3.0, pdfZoom + delta));
+    pdfZoomLabel.textContent = `${Math.round(pdfZoom * 100)}%`;
+    clearTimeout(wheelZoomTimer);
+    wheelZoomTimer = setTimeout(() => buildPdfPageSlots(true), 80);
+  }, { passive: false });
+
   async function renderPdfSlide(idbKey, fallbackUrl, slideId, slideTitle) {
     slideIframe.classList.add("hidden");
     slideImageViewer.classList.add("hidden");
@@ -1396,6 +1707,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    pdfBuildToken++;
     activePdfBlob = blob;
     activePdfSlideId = slideId;
     activePdfTitle = slideTitle || "slides";
@@ -1418,12 +1730,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     slidePdfViewer.classList.remove("hidden");
     setPdfTool(activePdfTool);
-    pdfPagesContainer.innerHTML = `<div class="py-10 text-xs text-[var(--tx3)]">กำลังเตรียมหน้า PDF...</div>`;
+    pdfPagesContainer.innerHTML = `<div class="py-10 text-xs text-[var(--tx3)] text-center">กำลังเตรียมหน้า PDF...</div>`;
 
     try {
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
       const buf = await blob.arrayBuffer();
-      activePdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+      const loadedDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+      activePdfDoc = loadedDoc;
       pdfCurrPage = 1;
       pdfZoom = 1;
       lastPdfContainerW = 0;
@@ -1436,110 +1749,173 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  async function buildPdfPageSlots(preservePage = false) {
+  async function buildPdfPageSlots(preservePage = false, customScrollTarget = null) {
     if (!activePdfDoc) return;
     const rawW = pdfPagesContainer.clientWidth;
     if (rawW < 50) return;
 
+    const buildToken = ++pdfBuildToken;
     lastPdfContainerW = rawW;
-    const targetRestorePage = preservePage ? pdfCurrPage : 1;
+
+    let anchorPage = preservePage ? pdfCurrPage : 1;
+    let anchorFracY = 0;
+    let anchorFracX = 0.5;
+    if (preservePage && !customScrollTarget) {
+      const prevSlot = pdfPagesContainer.querySelector(`.pdf-page-slot[data-page-num="${anchorPage}"]`);
+      if (prevSlot) {
+        const slotH = Math.max(1, prevSlot.offsetHeight);
+        anchorFracY = Math.max(0, Math.min(1, (pdfPagesContainer.scrollTop - prevSlot.offsetTop + 12) / slotH));
+        const slotW = Math.max(1, prevSlot.offsetWidth);
+        if (pdfPagesContainer.scrollWidth > pdfPagesContainer.clientWidth) {
+          anchorFracX = (pdfPagesContainer.scrollLeft + pdfPagesContainer.clientWidth / 2 - prevSlot.offsetLeft) / slotW;
+        }
+      }
+    }
+
+    const firstPage = await activePdfDoc.getPage(1);
+    if (buildToken !== pdfBuildToken || !activePdfDoc) return;
 
     if (pdfObserver) pdfObserver.disconnect();
-    pdfPagesContainer.innerHTML = "";
 
     const numPages = activePdfDoc.numPages;
+    anchorPage = Math.max(1, Math.min(numPages, anchorPage));
+
     pdfTotalPagesEl.textContent = String(numPages).padStart(2, "0");
-    pdfCurrPageEl.textContent = String(targetRestorePage).padStart(2, "0");
+    pdfCurrPage = anchorPage;
+    pdfCurrPageEl.textContent = String(anchorPage).padStart(2, "0");
     pdfZoomLabel.textContent = `${Math.round(pdfZoom * 100)}%`;
 
     const containerW = Math.max(260, rawW - 32);
-    const firstPage = await activePdfDoc.getPage(1);
     const firstVp = firstPage.getViewport({ scale: 1 });
+    const defaultScale = (containerW / firstVp.width) * pdfZoom;
+    const defaultVp = firstPage.getViewport({ scale: defaultScale });
 
+    const stage = document.createElement("div");
+    stage.id = "pdf-zoom-stage";
+    stage.style.width = "fit-content";
+    stage.style.minWidth = "100%";
+    stage.style.display = "flex";
+    stage.style.flexDirection = "column";
+    stage.style.alignItems = "center";
+    stage.style.gap = "12px";
+
+    // Strictly synchronous ordered DOM creation 1..N prevents async race scrambling
+    const frag = document.createDocumentFragment();
     for (let i = 1; i <= numPages; i++) {
-      const page = i <= 15 ? await activePdfDoc.getPage(i) : null;
-      const baseVp = page ? page.getViewport({ scale: 1 }) : firstVp;
-      const fitScale = (containerW / baseVp.width) * pdfZoom;
-      const vp = page ? page.getViewport({ scale: fitScale }) : { width: baseVp.width * fitScale, height: baseVp.height * fitScale };
-
       const wrap = document.createElement("div");
       wrap.className = "pdf-page-slot relative rounded-xl overflow-hidden bg-white shadow-md border border-[var(--line)] flex-shrink-0";
-      wrap.style.width = `${Math.floor(vp.width)}px`;
-      wrap.style.height = `${Math.floor(vp.height)}px`;
+      wrap.style.width = `${Math.floor(defaultVp.width)}px`;
+      wrap.style.height = `${Math.floor(defaultVp.height)}px`;
       wrap.dataset.pageNum = String(i);
       wrap.dataset.rendered = "false";
 
       const badge = document.createElement("span");
-      badge.className = "absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/60 text-white text-[10px] tnum pointer-events-none z-20";
+      badge.className = "pdf-page-badge absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/60 text-white text-[10px] tnum pointer-events-none z-20";
       badge.textContent = `${i}/${numPages}`;
       wrap.appendChild(badge);
 
-      pdfPagesContainer.appendChild(wrap);
+      frag.appendChild(wrap);
     }
 
+    stage.appendChild(frag);
+    pdfPagesContainer.replaceChildren(stage);
+
     pdfObserver = new IntersectionObserver(entries => {
+      if (buildToken !== pdfBuildToken) return;
       for (const entry of entries) {
         if (entry.isIntersecting) {
           const slot = entry.target;
           if (slot.dataset.rendered === "false") {
-            renderSinglePdfCanvas(slot, Number(slot.dataset.pageNum), containerW);
+            renderSinglePdfCanvas(slot, Number(slot.dataset.pageNum), containerW, buildToken);
           }
         }
       }
-    }, { root: pdfPagesContainer, rootMargin: "200px 0px", threshold: 0.05 });
+    }, { root: pdfPagesContainer, rootMargin: "240px 0px", threshold: 0.05 });
 
-    pdfPagesContainer.querySelectorAll(".pdf-page-slot").forEach(el => pdfObserver.observe(el));
+    stage.querySelectorAll(".pdf-page-slot").forEach(el => pdfObserver.observe(el));
 
-    if (preservePage && targetRestorePage > 1) {
-      const targetEl = pdfPagesContainer.querySelector(`.pdf-page-slot[data-page-num="${targetRestorePage}"]`);
-      if (targetEl) pdfPagesContainer.scrollTop = Math.max(0, targetEl.offsetTop - 12);
+    if (customScrollTarget) {
+      pdfPagesContainer.scrollLeft = customScrollTarget.left;
+      pdfPagesContainer.scrollTop = customScrollTarget.top;
+    } else if (preservePage) {
+      const targetEl = stage.querySelector(`.pdf-page-slot[data-page-num="${anchorPage}"]`);
+      if (targetEl) {
+        pdfPagesContainer.scrollTop = Math.max(0, targetEl.offsetTop - 12 + targetEl.offsetHeight * anchorFracY);
+        if (pdfPagesContainer.scrollWidth > pdfPagesContainer.clientWidth) {
+          pdfPagesContainer.scrollLeft = Math.max(0, targetEl.offsetLeft + targetEl.offsetWidth * anchorFracX - pdfPagesContainer.clientWidth / 2);
+        } else {
+          pdfPagesContainer.scrollLeft = 0;
+        }
+      }
     } else {
       pdfPagesContainer.scrollTop = 0;
+      pdfPagesContainer.scrollLeft = 0;
     }
   }
 
-  async function renderSinglePdfCanvas(slot, pageNum, containerW) {
-    if (!activePdfDoc || slot.dataset.rendered === "true") return;
-    slot.dataset.rendered = "true";
-    const page = await activePdfDoc.getPage(pageNum);
-    const baseVp = page.getViewport({ scale: 1 });
-    const exactScale = (containerW / baseVp.width) * pdfZoom;
-    const cssVp = page.getViewport({ scale: exactScale });
-    slot.style.width = `${Math.floor(cssVp.width)}px`;
-    slot.style.height = `${Math.floor(cssVp.height)}px`;
+  async function renderSinglePdfCanvas(slot, pageNum, containerW, buildToken) {
+    if (!activePdfDoc || buildToken !== pdfBuildToken || !slot.isConnected) return;
+    if (slot.dataset.rendered === "true" || slot.dataset.rendered === "loading") return;
+    slot.dataset.rendered = "loading";
 
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const vp = page.getViewport({ scale: exactScale * dpr });
+    try {
+      const page = await activePdfDoc.getPage(pageNum);
+      if (!activePdfDoc || buildToken !== pdfBuildToken || !slot.isConnected) return;
 
-    const bgCanvas = document.createElement("canvas");
-    bgCanvas.width = Math.floor(vp.width);
-    bgCanvas.height = Math.floor(vp.height);
-    bgCanvas.style.width = "100%";
-    bgCanvas.style.height = "100%";
-    bgCanvas.style.display = "block";
-    bgCanvas.style.pointerEvents = "none";
+      const baseVp = page.getViewport({ scale: 1 });
+      const exactScale = (containerW / baseVp.width) * pdfZoom;
+      const cssVp = page.getViewport({ scale: exactScale });
+      slot.style.width = `${Math.floor(cssVp.width)}px`;
+      slot.style.height = `${Math.floor(cssVp.height)}px`;
 
-    const inkCanvas = document.createElement("canvas");
-    inkCanvas.className = "pdf-ink-canvas absolute inset-0 w-full h-full z-10";
-    inkCanvas.width = Math.floor(vp.width);
-    inkCanvas.height = Math.floor(vp.height);
-    const isDrawing = activePdfTool !== "pan";
-    inkCanvas.style.pointerEvents = isDrawing ? "auto" : "none";
-    inkCanvas.style.touchAction = isDrawing ? "none" : "auto";
-    inkCanvas.style.cursor = activePdfTool === "eraser" ? "cell" : isDrawing ? "crosshair" : "default";
+      let dpr = Math.min(window.devicePixelRatio || 1, 2);
+      let vp = page.getViewport({ scale: exactScale * dpr });
+      while (vp.width * vp.height > 5_500_000 && dpr > 1) {
+        dpr = Math.max(1, dpr * 0.8);
+        vp = page.getViewport({ scale: exactScale * dpr });
+      }
 
-    slot.insertBefore(inkCanvas, slot.firstChild);
-    slot.insertBefore(bgCanvas, inkCanvas);
+      const bgCanvas = document.createElement("canvas");
+      bgCanvas.width = Math.max(1, Math.floor(vp.width));
+      bgCanvas.height = Math.max(1, Math.floor(vp.height));
+      bgCanvas.style.width = "100%";
+      bgCanvas.style.height = "100%";
+      bgCanvas.style.display = "block";
+      bgCanvas.style.pointerEvents = "none";
 
-    const ctx = bgCanvas.getContext("2d");
-    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      const inkCanvas = document.createElement("canvas");
+      inkCanvas.className = "pdf-ink-canvas absolute inset-0 w-full h-full z-10";
+      inkCanvas.width = bgCanvas.width;
+      inkCanvas.height = bgCanvas.height;
+      applyInkTouchSettings(inkCanvas);
 
-    redrawInkCanvas(inkCanvas, String(pageNum));
-    bindInkEvents(inkCanvas, pageNum);
+      const ctx = bgCanvas.getContext("2d");
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      if (!activePdfDoc || buildToken !== pdfBuildToken || !slot.isConnected) return;
+
+      slot.querySelectorAll("canvas").forEach(c => c.remove());
+      slot.insertBefore(inkCanvas, slot.firstChild);
+      slot.insertBefore(bgCanvas, inkCanvas);
+      slot.dataset.rendered = "true";
+
+      redrawInkCanvas(inkCanvas, String(pageNum));
+      bindInkEvents(inkCanvas, pageNum);
+    } catch (err) {
+      if (slot.isConnected && buildToken === pdfBuildToken) {
+        slot.dataset.rendered = "false";
+      }
+      console.error(`Failed to render PDF page ${pageNum}:`, err);
+    }
   }
 
   window.zoomPdfSlide = async delta => {
-    pdfZoom = Math.max(0.6, Math.min(2.2, pdfZoom + delta));
+    pdfZoom = Math.max(0.6, Math.min(3.0, pdfZoom + delta));
+    await buildPdfPageSlots(true);
+  };
+
+  window.resetPdfZoom = async () => {
+    if (Math.abs(pdfZoom - 1) < 0.01) return;
+    pdfZoom = 1;
     await buildPdfPageSlots(true);
   };
 
@@ -1991,8 +2367,7 @@ document.addEventListener("DOMContentLoaded", () => {
     updateStats();
     closeAddSlideModal();
     e.target.reset();
-    openSubject(targetSubId, true);
-    selectSlide(newSlide.id, true);
+    openSubjectSlide(targetSubId, newSlide.id);
     showToast(`เพิ่มสไลด์ "${title}" และเปิดเทียบข้างๆ แล้ว`);
   });
 

@@ -649,6 +649,10 @@
             </div>
 
             <div class="flex items-center gap-1 flex-shrink-0">
+              <button id="slide-expand-btn" onclick="toggleSlideExpand()" class="h-7 px-2 rounded-lg flex items-center gap-1 text-[var(--tx2)] hover:text-[var(--accent)] hover:bg-[var(--s3)] text-[11px] font-medium transition-colors" title="ขยาย/ย่อหน้าต่างสไลด์เต็มจอ">
+                <i class="ph ph-arrows-out-simple text-sm"></i>
+                <span class="hidden sm:inline">เต็มจอ</span>
+              </button>
               <button onclick="openAddSlideModal()" class="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx2)] hover:text-[var(--accent)] hover:bg-[var(--s3)] transition-colors" title="เพิ่มสไลด์ใหม่">
                 <i class="ph ph-plus text-sm"></i>
               </button>
@@ -691,22 +695,29 @@
               <!-- GoodNotes Annotation Toolbar -->
               <div class="px-2.5 py-1.5 bg-[var(--rail)] border-b border-[var(--line)] flex flex-wrap items-center justify-between gap-2 text-xs flex-shrink-0">
                 
-                <!-- Tool Modes -->
-                <div class="flex items-center gap-1 bg-[var(--s1)] p-0.5 rounded-lg border border-[var(--line)]">
-                  <button onclick="setPdfTool('pan')" id="pdf-tool-pan" class="h-7 px-2 rounded-md bg-[var(--accent)] text-white flex items-center gap-1 transition" title="เลื่อนอ่าน (Pan)">
-                    <i class="ph ph-hand-grabbing text-sm"></i>
-                    <span class="hidden xl:inline text-[11px]">เลื่อน</span>
-                  </button>
-                  <button onclick="setPdfTool('pen')" id="pdf-tool-pen" class="h-7 px-2 rounded-md text-[var(--tx3)] hover:text-[var(--tx)] flex items-center gap-1 transition" title="ปากกา (Pen)">
-                    <i class="ph ph-pen-nib text-sm"></i>
-                    <span class="hidden xl:inline text-[11px]">ปากกา</span>
-                  </button>
-                  <button onclick="setPdfTool('highlighter')" id="pdf-tool-highlighter" class="h-7 px-2 rounded-md text-[var(--tx3)] hover:text-[var(--tx)] flex items-center gap-1 transition" title="ไฮไลท์ (Highlighter)">
-                    <i class="ph ph-highlighter text-sm"></i>
-                    <span class="hidden xl:inline text-[11px]">ไฮไลท์</span>
-                  </button>
-                  <button onclick="setPdfTool('eraser')" id="pdf-tool-eraser" class="h-7 px-2 rounded-md text-[var(--tx3)] hover:text-[var(--tx)] flex items-center gap-1 transition" title="ยางลบเส้น">
-                    <i class="ph ph-eraser text-sm"></i>
+                <!-- Tool Modes + iPad GoodNotes Touch/Pencil Switch -->
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <div class="flex items-center gap-1 bg-[var(--s1)] p-0.5 rounded-lg border border-[var(--line)]">
+                    <button onclick="setPdfTool('pan')" id="pdf-tool-pan" class="h-7 px-2 rounded-md bg-[var(--accent)] text-white flex items-center gap-1 transition" title="เลื่อนอ่าน (Pan)">
+                      <i class="ph ph-hand-grabbing text-sm"></i>
+                      <span class="hidden xl:inline text-[11px]">เลื่อน</span>
+                    </button>
+                    <button onclick="setPdfTool('pen')" id="pdf-tool-pen" class="h-7 px-2 rounded-md text-[var(--tx3)] hover:text-[var(--tx)] flex items-center gap-1 transition" title="ปากกา (Pen)">
+                      <i class="ph ph-pen-nib text-sm"></i>
+                      <span class="hidden xl:inline text-[11px]">ปากกา</span>
+                    </button>
+                    <button onclick="setPdfTool('highlighter')" id="pdf-tool-highlighter" class="h-7 px-2 rounded-md text-[var(--tx3)] hover:text-[var(--tx)] flex items-center gap-1 transition" title="ไฮไลท์ (Highlighter)">
+                      <i class="ph ph-highlighter text-sm"></i>
+                      <span class="hidden xl:inline text-[11px]">ไฮไลท์</span>
+                    </button>
+                    <button onclick="setPdfTool('eraser')" id="pdf-tool-eraser" class="h-7 px-2 rounded-md text-[var(--tx3)] hover:text-[var(--tx)] flex items-center gap-1 transition" title="ยางลบเส้น">
+                      <i class="ph ph-eraser text-sm"></i>
+                    </button>
+                  </div>
+
+                  <button onclick="toggleTouchDrawMode()" id="pdf-touch-mode-btn" class="h-7 px-2 rounded-lg border border-[var(--accent-32)] bg-[var(--accent-08)] text-[var(--accent)] text-[11px] font-medium flex items-center gap-1 transition whitespace-nowrap" title="สลับโหมดบนไอแพด: นิ้วเลื่อน (เขียนด้วย Apple Pencil) หรือ ใช้นิ้วเขียน">
+                    <i id="pdf-touch-mode-icon" class="ph ph-hand-swipe-right text-sm"></i>
+                    <span id="pdf-touch-mode-label">นิ้วเลื่อน</span>
                   </button>
                 </div>
 
@@ -757,13 +768,14 @@
 
               </div>
 
-              <div id="pdf-pages-container" class="relative flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 bg-[var(--bg)] custom-scrollbar flex flex-col items-center"></div>
+              <div id="pdf-pages-container" class="relative flex-1 overflow-auto p-3 sm:p-4 bg-[var(--bg)] custom-scrollbar select-none" style="overscroll-behavior: contain;"></div>
 
               <div class="px-3 py-2 bg-[var(--rail)] border-t border-[var(--line)] flex items-center justify-between gap-2 text-xs tnum flex-shrink-0">
                 <div class="flex items-center gap-1">
-                  <button onclick="zoomPdfSlide(-0.15)" class="w-7 h-7 rounded bg-[var(--s1)] hover:bg-[var(--s3)] border border-[var(--line)] flex items-center justify-center" title="ย่อ"><i class="ph ph-minus"></i></button>
-                  <span id="pdf-zoom-label" class="px-1.5 text-[11px] text-[var(--tx3)]">100%</span>
-                  <button onclick="zoomPdfSlide(0.15)" class="w-7 h-7 rounded bg-[var(--s1)] hover:bg-[var(--s3)] border border-[var(--line)] flex items-center justify-center" title="ขยาย"><i class="ph ph-plus"></i></button>
+                  <button onclick="zoomPdfSlide(-0.2)" class="w-7 h-7 rounded bg-[var(--s1)] hover:bg-[var(--s3)] border border-[var(--line)] flex items-center justify-center" title="ย่อ"><i class="ph ph-minus"></i></button>
+                  <button onclick="resetPdfZoom()" id="pdf-zoom-label" class="px-2 h-7 rounded hover:bg-[var(--s3)] text-[11px] text-[var(--tx2)] font-medium transition" title="แตะเพื่อรีเซ็ตซูมเป็น 100%">100%</button>
+                  <button onclick="zoomPdfSlide(0.2)" class="w-7 h-7 rounded bg-[var(--s1)] hover:bg-[var(--s3)] border border-[var(--line)] flex items-center justify-center" title="ขยาย"><i class="ph ph-plus"></i></button>
+                  <span class="hidden md:inline text-[10px] text-[var(--tx3)] ml-1">จีบ 2 นิ้วเพื่อซูม</span>
                 </div>
                 <div class="flex items-center gap-1.5">
                   <button onclick="stepPdfPage(-1)" class="px-2.5 py-1 rounded-lg bg-[var(--s1)] hover:bg-[var(--s3)] border border-[var(--line)] text-[var(--tx)] transition whitespace-nowrap">← ก่อนหน้า</button>
