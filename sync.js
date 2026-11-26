@@ -217,6 +217,8 @@ const StudyVaultSync = (() => {
           frameRestricted: Boolean(link.frameRestricted),
           updatedAt: link.updatedAt || new Date().toISOString().split("T")[0]
         };
+        if (link.pairedSlideId) cleanLink.pairedSlideId = link.pairedSlideId;
+        if (link.unpairedAuto) cleanLink.unpairedAuto = true;
 
         if (link.repoPath) {
           cleanLink.repoPath = link.repoPath;
@@ -254,6 +256,7 @@ const StudyVaultSync = (() => {
           type: sl.type,
           updatedAt: sl.updatedAt || new Date().toISOString().split("T")[0]
         };
+        if (sl.unpairedAuto) cleanSlide.unpairedAuto = true;
         if (sl.url) cleanSlide.url = sl.url;
         if (Array.isArray(sl.urls)) cleanSlide.urls = [...sl.urls];
         if (sl.repoPath) {

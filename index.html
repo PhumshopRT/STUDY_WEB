@@ -194,6 +194,27 @@
       pointer-events: none;
       border: 0;
     }
+    .preview-iframe-half {
+      width: 880px;
+      height: 1100px;
+      transform-origin: top left;
+      pointer-events: none;
+      border: 0;
+    }
+
+    #main-topbar::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 -10px 0;
+      background: linear-gradient(
+        to bottom,
+        var(--bg) 72%,
+        color-mix(in srgb, var(--bg) 88%, transparent) 88%,
+        transparent 100%
+      );
+      pointer-events: none;
+      z-index: -1;
+    }
 
     @keyframes sv-sheen {
       from { transform: translate3d(-50%, 0, 0); }
@@ -257,7 +278,7 @@
   <!-- ===================================================================== -->
   <!-- FLOATING GLASS TOPBAR                                                 -->
   <!-- ===================================================================== -->
-  <header id="main-topbar" class="sticky top-3 z-40 w-full px-3 sm:px-6 pointer-events-none">
+  <header id="main-topbar" class="sticky top-0 z-40 w-full px-3 sm:px-6 pt-3 pb-2 pointer-events-none">
     <div class="max-w-[1480px] mx-auto flex flex-wrap items-center justify-between gap-2.5">
       
       <!-- Left Pill: Brand + Category Scope Tabs -->
@@ -333,7 +354,7 @@
   <!-- ===================================================================== -->
   <!-- LEVEL 1 VIEW: SUBJECT GALLERY                                         -->
   <!-- ===================================================================== -->
-  <main id="view-home" class="max-w-[1480px] mx-auto px-4 sm:px-6 pt-8 pb-16 flex-1 w-full space-y-6 sv-arrive">
+  <main id="view-home" class="max-w-[1480px] mx-auto px-4 sm:px-6 pt-6 pb-16 flex-1 w-full space-y-6 sv-arrive">
     
     <!-- Mobile Search -->
     <div class="md:hidden relative">
@@ -546,7 +567,7 @@
           <div class="bg-[var(--rail)] px-3 py-2 border-b border-[var(--line)] flex items-center justify-between gap-2 flex-shrink-0 overflow-x-auto custom-scrollbar">
             
             <div class="flex items-center gap-2 min-w-0">
-              <select id="split-link-select" class="hidden sv-input h-7 px-2 rounded-lg text-[11px] max-w-[165px] truncate"></select>
+              <select id="split-link-select" class="hidden sv-input h-7 px-2 rounded-lg text-[11px] min-w-0 w-36 max-w-[165px] truncate"></select>
 
               <div id="vp-group" class="flex items-center bg-[var(--s1)] p-0.5 rounded-lg border border-[var(--line)] text-xs flex-shrink-0">
                 <button onclick="setViewport('desktop')" id="vp-desktop" class="px-2 py-1 rounded-md bg-[var(--s3)] text-[var(--accent)] transition-colors" title="Desktop">
@@ -678,7 +699,7 @@
           <div class="bg-[var(--rail)] px-3 py-2 border-b border-[var(--line)] flex items-center justify-between gap-2 flex-shrink-0">
             <div class="flex items-center gap-2 min-w-0 flex-1">
               <span class="px-2 py-0.5 rounded-md bg-[var(--accent-08)] text-[var(--accent)] border border-[var(--accent-32)] text-[10px] font-bold flex-shrink-0">SLIDES</span>
-              <select id="slide-deck-select" class="sv-input h-7 px-2 rounded-lg text-xs flex-1 max-w-[240px] truncate"></select>
+              <select id="slide-deck-select" class="sv-input h-7 px-2 rounded-lg text-xs flex-1 min-w-0 w-0 max-w-[240px] truncate"></select>
             </div>
 
             <div class="flex items-center gap-1 flex-shrink-0">
@@ -997,6 +1018,31 @@
           <input type="text" id="lnk-subtitle" placeholder="รายละเอียดสั้นๆ ของลิงก์นี้" class="sv-input w-full h-9 px-3 rounded-xl">
         </div>
 
+        <!-- Optional Paired Slide Section -->
+        <div id="lnk-pair-section" class="space-y-2 p-3 rounded-xl bg-[var(--rail)] border border-[var(--line)]">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <label class="text-xs font-semibold text-[var(--tx2)] flex items-center gap-1.5">
+              <i class="ph ph-presentation-chart text-pink-400"></i>
+              <span>สไลด์คู่กันของเรื่องนี้ (ไม่บังคับ)</span>
+            </label>
+            <div class="flex gap-1 bg-[var(--s1)] p-0.5 rounded-lg border border-[var(--line)] text-[11px]">
+              <button type="button" onclick="setLinkPairMode('none')" id="lnk-pair-none" class="px-2 py-0.5 rounded bg-[var(--accent)] text-white font-medium">ยังไม่แนบ</button>
+              <button type="button" onclick="setLinkPairMode('existing')" id="lnk-pair-existing" class="px-2 py-0.5 rounded text-[var(--tx3)]">เลือกสไลด์ที่มี</button>
+              <button type="button" onclick="setLinkPairMode('pdf')" id="lnk-pair-pdf" class="px-2 py-0.5 rounded text-[var(--tx3)]">+ อัปโหลด PDF คู่</button>
+            </div>
+          </div>
+
+          <div id="lnk-pair-existing-group" class="hidden space-y-1.5">
+            <select id="lnk-pair-slide-select" class="sv-input w-full h-9 px-3 rounded-xl text-xs"></select>
+            <p class="text-[10px] text-[var(--tx3)]">จะรวมสรุปและสไลด์ที่เลือกเข้าเป็นเรื่องเดียว (การ์ดเดียว เปิดอ่านคู่กันทันที)</p>
+          </div>
+
+          <div id="lnk-pair-pdf-group" class="hidden space-y-2">
+            <input type="file" id="lnk-pair-pdf-file" accept=".pdf" class="block w-full text-[11px] text-[var(--tx2)] file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-[var(--s3)] file:text-[var(--accent)] file:font-semibold cursor-pointer border border-dashed border-[var(--line-2)] rounded-xl p-1.5">
+            <input type="text" id="lnk-pair-pdf-title" placeholder="ชื่อชุดสไลด์ (ว่างไว้จะใช้ชื่อเดียวกับไฟล์หรือเรื่องนี้)" class="sv-input w-full h-8 px-2.5 rounded-lg text-xs">
+          </div>
+        </div>
+
         <button type="submit" id="lnk-submit-btn" class="sv-btn-primary w-full h-9 px-4 rounded-xl text-xs">
           บันทึกลิงก์เข้าวิชานี้
         </button>
@@ -1080,6 +1126,12 @@
         <div id="sl-panel-url" class="hidden space-y-2">
           <label class="block text-xs font-medium text-[var(--tx2)]">ลิงก์ Google Slides / Canva / PDF URL *</label>
           <input type="text" id="sl-url-input" placeholder="https://docs.google.com/presentation/d/..." class="sv-input w-full h-9 px-3 rounded-xl font-mono">
+        </div>
+
+        <div class="p-3 rounded-xl bg-[var(--rail)] border border-[var(--line)] space-y-1.5">
+          <label class="block text-xs font-semibold text-[var(--tx2)]">รวมเป็นเรื่องเดียวกับสรุปที่มีอยู่ (ไม่บังคับ)</label>
+          <select id="sl-pair-link-select" class="sv-input w-full h-9 px-3 rounded-xl text-xs"></select>
+          <p class="text-[10px] text-[var(--tx3)]">เลือกชื่อเรื่องสรุปเพื่อรวมสไลด์นี้เข้าเป็นเรื่องเดียวกันทันที</p>
         </div>
 
         <button type="submit" class="sv-btn-primary w-full h-9 px-4 rounded-xl text-xs">
@@ -1178,6 +1230,42 @@
           <p class="text-[10px] text-[var(--tx3)] leading-relaxed">
             * ลายมือปากกา/ไฮไลท์บนสไลด์จะไม่ถูกส่งขึ้นเว็บกลาง เพื่อนๆ ที่เปิดเว็บเข้ามาจะเห็นเป็นสไลด์สะอาดๆ ก่อนจด และสามารถจดโน้ตส่วนตัวเก็บไว้บนเครื่องตัวเองได้ครับ
           </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 5: จับคู่สรุปกับสไลด์เข้าเป็นเรื่องเดียว                           -->
+  <!-- ===================================================================== -->
+  <div id="pair-topic-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="sv-surface w-full max-w-md rounded-2xl overflow-hidden flex flex-col max-h-[85vh]">
+      <div class="px-5 py-3.5 border-b border-[var(--line)] flex items-center justify-between bg-[var(--rail)]">
+        <div class="flex items-center gap-2">
+          <i class="ph ph-git-merge text-[var(--accent)] text-lg"></i>
+          <h3 class="font-bold text-sm text-[var(--tx)]">รวมสรุป + สไลด์เป็นเรื่องเดียว</h3>
+        </div>
+        <button onclick="closePairTopicModal()" class="p-1 text-[var(--tx3)] hover:text-[var(--tx)] rounded-lg">
+          <i class="ph ph-x text-base"></i>
+        </button>
+      </div>
+
+      <div class="p-5 overflow-y-auto custom-scrollbar space-y-4 text-xs">
+        <div class="p-3 rounded-xl bg-[var(--rail)] border border-[var(--line)] space-y-1">
+          <span id="pair-source-badge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-[var(--accent-08)] text-[var(--accent)] border border-[var(--accent-32)]">หัวข้อ</span>
+          <p id="pair-source-title" class="font-bold text-sm text-[var(--tx)] pt-0.5">-</p>
+        </div>
+
+        <div class="space-y-2">
+          <p id="pair-list-heading" class="font-semibold text-[var(--tx2)]">เลือกรายการที่มีอยู่แล้วในวิชานี้เพื่อรวมเป็นเรื่องเดียวกัน:</p>
+          <div id="pair-existing-list" class="space-y-2 max-h-60 overflow-y-auto custom-scrollbar"></div>
+        </div>
+
+        <div class="pt-3 border-t border-[var(--line)]">
+          <button type="button" id="pair-upload-new-btn" class="sv-btn-primary w-full h-9 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5">
+            <i class="ph ph-plus-circle text-sm"></i>
+            <span>หรืออัปโหลดไฟล์ใหม่เข้าเรื่องนี้ทันที</span>
+          </button>
         </div>
       </div>
     </div>
