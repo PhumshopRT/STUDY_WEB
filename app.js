@@ -2248,14 +2248,16 @@ document.addEventListener("DOMContentLoaded", () => {
   let pdfIsPinching = false;
 
   const LS_TOUCH_DRAW = "studyvault_pdf_touch_draw";
+  const LS_PEN_SIZE = "studyvault_pdf_pen_size";
+  const LS_HL_SIZE = "studyvault_pdf_hl_size";
   let pdfTouchDrawEnabled = loadJSON(LS_TOUCH_DRAW, false); // false = 1-finger scroll + Apple Pencil draw (GoodNotes style)
   let activeStrokeSession = null;
 
   let activePdfTool = "pan";
   let pdfPenColor = "#38bdf8";
-  let pdfPenSize = 4;
+  let pdfPenSize = Math.max(0.1, Math.min(10, Number(loadJSON(LS_PEN_SIZE, 1)) || 1));
   let pdfHighlightColor = "#facc15";
-  let pdfHighlightSize = 18;
+  let pdfHighlightSize = Math.max(4, Math.min(36, Number(loadJSON(LS_HL_SIZE, 18)) || 18));
   let pdfAnnotations = {};
   let pdfUndoStacks = {};
   let pdfRedoStacks = {};
@@ -2278,15 +2280,25 @@ document.addEventListener("DOMContentLoaded", () => {
   function syncAnnotationControls() {
     const color = getActiveToolColor();
     const size = getActiveToolSize();
+    const isHl = activePdfTool === "highlighter";
     if (pdfColorPicker) pdfColorPicker.value = color;
-    if (pdfSizeSlider) pdfSizeSlider.value = String(size);
-    if (pdfSizeLabel) pdfSizeLabel.textContent = `${size}px`;
+    if (pdfSizeSlider) {
+      pdfSizeSlider.min = isHl ? "4" : "0.1";
+      pdfSizeSlider.max = isHl ? "36" : "10";
+      pdfSizeSlider.step = isHl ? "1" : "0.1";
+      pdfSizeSlider.value = String(size);
+    }
+    if (pdfSizeLabel) {
+      pdfSizeLabel.textContent = isHl ? `${Math.round(size)}px` : `${Number(size).toFixed(1)}px`;
+    }
     if (pdfSizeDot) {
-      const dotPx = Math.max(4, Math.min(18, Math.round(size * 0.6)));
+      const dotPx = isHl
+        ? Math.max(4, Math.min(18, Math.round(size * 0.55)))
+        : Math.max(2, Math.min(14, Math.round(size * 1.4 + 1.5)));
       pdfSizeDot.style.width = `${dotPx}px`;
       pdfSizeDot.style.height = `${dotPx}px`;
       pdfSizeDot.style.backgroundColor = color;
-      pdfSizeDot.style.opacity = activePdfTool === "highlighter" ? "0.6" : "1";
+      pdfSizeDot.style.opacity = isHl ? "0.6" : "1";
     }
   }
 
@@ -2348,8 +2360,13 @@ document.addEventListener("DOMContentLoaded", () => {
   if (pdfSizeSlider) {
     pdfSizeSlider.addEventListener("input", e => {
       const val = Number(e.target.value);
-      if (activePdfTool === "highlighter") pdfHighlightSize = val;
-      else pdfPenSize = val;
+      if (activePdfTool === "highlighter") {
+        pdfHighlightSize = val;
+        localStorage.setItem(LS_HL_SIZE, JSON.stringify(val));
+      } else {
+        pdfPenSize = val;
+        localStorage.setItem(LS_PEN_SIZE, JSON.stringify(val));
+      }
       syncAnnotationControls();
     });
   }
@@ -2383,7 +2400,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ctx.fillStyle = stroke.color;
     ctx.globalAlpha = stroke.tool === "highlighter" ? 0.34 : 1;
 
-    const lineW = Math.max(1, stroke.widthRatio * width);
+    const lineW = Math.max(0.25, stroke.widthRatio * width);
     ctx.lineWidth = lineW;
 
     const pts = stroke.points;
