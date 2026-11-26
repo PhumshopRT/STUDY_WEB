@@ -56,10 +56,12 @@ flowchart LR
 
 ```text
 STUDY_WEB/
-├── index.html            # หน้าหลัก (Daylight Porcelain & Midnight Navy UI + GoodNotes Toolbar)
-├── app.js                # ตรรกะหลัก (Subject CRUD, Subject Lock, Split Resizer, PDF Studio)
-├── data.js               # ข้อมูลรายวิชาเริ่มต้น (RADP301 วิชารังสีพยาธิ)
-├── db.js                 # IndexedDB Wrapper สำหรับเก็บ PDF, รูปสไลด์, HTML และลายมือโน้ต
+├── index.html            # หน้าหลัก (Obsidian Black & Daylight UI + Admin Sync + GoodNotes Toolbar)
+├── app.js                # ตรรกะหลัก (Subject CRUD, Upload Hub, Pinch-Zoom, GoodNotes PDF Studio)
+├── sync.js               # ระบบโหลดคลังกลาง (shared-library.json) & GitHub Admin Sync
+├── shared-library.json   # ข้อมูลรายวิชา ลิงก์ โค้ด HTML และสไลด์กลางที่ทุกคนเปิดมาเห็นตรงกัน
+├── data.js               # ข้อมูลรายวิชาสำรองเริ่มต้น (RADP301 วิชารังสีพยาธิ)
+├── db.js                 # IndexedDB Wrapper (เก็บแคชสไลด์ & ลายมือโน้ตส่วนตัวแยกแต่ละเครื่อง)
 ├── site.webmanifest      # Web App Manifest (Chrome PWA & Home Screen App Info)
 ├── apple-touch-icon.png  # ไอคอน Safari Add to Home Screen (iPhone/iPad 180x180)
 ├── favicon.ico           # Favicon มาตรฐานสำหรับเบราว์เซอร์ (16/32/48/64)

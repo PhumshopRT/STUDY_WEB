@@ -245,10 +245,14 @@
     .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 9999px; }
+
+    /* Public Visitor vs Owner Admin Sync visibility */
+    body:not([data-admin="true"]) .admin-only { display: none !important; }
+    body[data-admin="true"] .visitor-only { display: none !important; }
   </style>
 </head>
 
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col" data-admin="false">
 
   <!-- ===================================================================== -->
   <!-- FLOATING GLASS TOPBAR                                                 -->
@@ -273,7 +277,7 @@
         </div>
       </div>
 
-      <!-- Right Pill: Search + Theme + Add Media + Add/Manage Subject -->
+      <!-- Right Pill: Search + Theme + Admin Sync + Add Media + Add/Manage Subject -->
       <div class="sv-bar pointer-events-auto h-12 rounded-2xl px-2 flex items-center gap-1.5 ml-auto">
         <div class="relative hidden md:flex items-center">
           <i class="ph ph-magnifying-glass absolute left-3 text-xs text-[var(--tx3)] pointer-events-none"></i>
@@ -296,8 +300,18 @@
         </button>
 
         <button 
+          id="open-admin-btn"
+          onclick="openAdminModal()"
+          class="h-8 px-2.5 rounded-xl border border-[var(--line)] bg-[var(--s1)] hover:bg-[var(--s3)] text-[var(--tx2)] hover:text-[var(--tx)] flex items-center gap-1.5 transition-colors text-xs font-medium whitespace-nowrap"
+          title="สำหรับเจ้าของเว็บ: เชื่อม GitHub Sync เพื่อลงวิชา/โค้ด/สไลด์ให้ทุกคนเห็น"
+        >
+          <i id="admin-nav-icon" class="ph ph-lock-key text-sm text-[var(--tx3)]"></i>
+          <span id="admin-nav-label">เจ้าของเว็บ (Admin)</span>
+        </button>
+
+        <button 
           onclick="openQuickSlideUpload()"
-          class="h-8 px-3 rounded-xl bg-[var(--s3)] hover:bg-[var(--s4)] border border-[var(--accent-32)] text-[var(--accent)] text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition-colors"
+          class="admin-only h-8 px-3 rounded-xl bg-[var(--s3)] hover:bg-[var(--s4)] border border-[var(--accent-32)] text-[var(--accent)] text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition-colors"
           title="อัปโหลดลิงก์เว็บหรือสไลด์เข้าวิชาที่ต้องการ"
         >
           <i class="ph ph-upload-simple text-sm"></i>
@@ -306,7 +320,7 @@
 
         <button 
           id="open-add-subject-btn"
-          class="sv-btn-primary h-8 px-3 rounded-xl text-xs flex items-center gap-1.5 whitespace-nowrap"
+          class="admin-only sv-btn-primary h-8 px-3 rounded-xl text-xs flex items-center gap-1.5 whitespace-nowrap"
         >
           <i class="ph ph-plus-circle text-sm"></i>
           <span>เพิ่ม / ลบวิชา</span>
@@ -432,7 +446,7 @@
 
         <button 
           id="open-add-slide-btn"
-          class="sv-surface h-8 px-2.5 rounded-xl text-xs font-medium text-[var(--tx)] hover:bg-[var(--s3)] flex items-center gap-1.5 transition-colors"
+          class="admin-only sv-surface h-8 px-2.5 rounded-xl text-xs font-medium text-[var(--tx)] hover:bg-[var(--s3)] flex items-center gap-1.5 transition-colors"
         >
           <i class="ph ph-presentation-chart text-sm text-[var(--accent)]"></i>
           <span>เพิ่มสไลด์</span>
@@ -440,7 +454,7 @@
 
         <button 
           id="open-add-link-btn"
-          class="sv-btn-primary h-8 px-3 rounded-xl text-xs flex items-center gap-1"
+          class="admin-only sv-btn-primary h-8 px-3 rounded-xl text-xs flex items-center gap-1"
         >
           <i class="ph ph-plus text-sm"></i>
           <span>เพิ่มลิงก์</span>
@@ -457,7 +471,7 @@
         <!-- Explicit Delete Subject Button with text label -->
         <button 
           id="ws-delete-subject-btn"
-          class="h-8 px-2.5 rounded-xl border border-[var(--line)] bg-[var(--s1)] text-[var(--danger)] hover:bg-[var(--danger-bg)] text-xs font-medium flex items-center gap-1 transition-colors"
+          class="admin-only h-8 px-2.5 rounded-xl border border-[var(--line)] bg-[var(--s1)] text-[var(--danger)] hover:bg-[var(--danger-bg)] text-xs font-medium flex items-center gap-1 transition-colors"
           title="ลบวิชานี้"
         >
           <i class="ph ph-trash text-sm"></i>
@@ -490,7 +504,7 @@
               <i class="ph ph-presentation-chart text-[var(--accent)]"></i>
               <span>สไลด์เรียน (<span id="ws-slides-count">00</span>)</span>
             </h2>
-            <button onclick="openAddSlideModal()" class="text-[11px] font-semibold text-[var(--accent)] hover:underline">+ เพิ่มสไลด์</button>
+            <button onclick="openAddSlideModal()" class="admin-only text-[11px] font-semibold text-[var(--accent)] hover:underline">+ เพิ่มสไลด์</button>
           </div>
           <div id="ws-slides-list" class="space-y-1.5"></div>
         </div>
@@ -539,7 +553,7 @@
 
             <!-- Actions -->
             <div class="flex items-center gap-1 flex-shrink-0">
-              <button onclick="editActiveLink()" id="stage-edit-btn" class="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--accent)] hover:bg-[var(--s3)] transition-colors" title="แก้ไข / วางโค้ด HTML">
+              <button onclick="editActiveLink()" id="stage-edit-btn" class="admin-only w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--accent)] hover:bg-[var(--s3)] transition-colors" title="แก้ไข / วางโค้ด HTML">
                 <i class="ph ph-pencil-simple text-sm"></i>
               </button>
               <button id="stage-refresh-btn" class="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--s3)] transition-colors" title="โหลดใหม่">
@@ -566,8 +580,8 @@
             <div id="stage-timeout-bar" class="hidden absolute top-2.5 left-1/2 -translate-x-1/2 z-30 sv-bar px-3 py-1.5 rounded-xl flex items-center gap-2 text-[11px] whitespace-nowrap">
               <span class="text-[var(--tx2)]">เว็บไม่แสดงผล?</span>
               <button onclick="openDualDesktopWindows()" class="text-[var(--accent)] font-semibold hover:underline">เปิดหน้าต่างคู่ Desktop</button>
-              <span class="text-[var(--tx4)]">|</span>
-              <button onclick="editActiveLink(true)" class="text-[var(--tx)] font-medium hover:underline">วางโค้ด HTML</button>
+              <span class="admin-only text-[var(--tx4)]">|</span>
+              <button onclick="editActiveLink(true)" class="admin-only text-[var(--tx)] font-medium hover:underline">วางโค้ด HTML</button>
               <button onclick="document.getElementById('stage-timeout-bar').classList.add('hidden')" class="text-[var(--tx3)] hover:text-[var(--tx)] ml-1"><i class="ph ph-x"></i></button>
             </div>
 
@@ -577,8 +591,8 @@
                 <i class="ph ph-link-simple"></i>
               </div>
               <p class="text-sm font-semibold text-[var(--tx)]">ยังไม่มีลิงก์เว็บในวิชานี้</p>
-              <p class="text-xs text-[var(--tx2)]">เพิ่มลิงก์เว็บสรุปหรือวางโค้ด HTML (รองรับเกม กราฟ และแบบจำลอง) เพื่อเริ่มอ่าน</p>
-              <button onclick="openAddLinkModal()" class="sv-btn-primary h-9 px-4 rounded-xl text-xs">
+              <p class="text-xs text-[var(--tx2)]">วิชานี้ยังไม่มีลิงก์บทเรียนในขณะนี้</p>
+              <button onclick="openAddLinkModal()" class="admin-only sv-btn-primary h-9 px-4 rounded-xl text-xs">
                 + เพิ่มลิงก์แรกเข้าวิชานี้
               </button>
             </div>
@@ -605,7 +619,7 @@
                   </div>
 
                   <div class="space-y-2">
-                    <button onclick="editActiveLink(true)" class="sv-btn-primary w-full h-9 px-4 rounded-xl text-xs flex items-center justify-center gap-2">
+                    <button onclick="editActiveLink(true)" class="admin-only sv-btn-primary w-full h-9 px-4 rounded-xl text-xs flex items-center justify-center gap-2">
                       <i class="ph ph-code text-sm"></i>
                       <span>วางโค้ด HTML ของเว็บนี้ (เพื่อให้แสดงเต็มๆ ในกรอบนี้)</span>
                     </button>
@@ -653,13 +667,13 @@
                 <i class="ph ph-arrows-out-simple text-sm"></i>
                 <span class="hidden sm:inline">เต็มจอ</span>
               </button>
-              <button onclick="openAddSlideModal()" class="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx2)] hover:text-[var(--accent)] hover:bg-[var(--s3)] transition-colors" title="เพิ่มสไลด์ใหม่">
+              <button onclick="openAddSlideModal()" class="admin-only w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx2)] hover:text-[var(--accent)] hover:bg-[var(--s3)] transition-colors" title="เพิ่มสไลด์ใหม่">
                 <i class="ph ph-plus text-sm"></i>
               </button>
               <button onclick="popoutSlideWindow()" class="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--s3)] transition-colors" title="แยกหน้าต่างสไลด์ออกมาเดี่ยวๆ">
                 <i class="ph ph-arrow-square-out text-sm"></i>
               </button>
-              <button id="slide-delete-btn" onclick="deleteActiveSlide()" class="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--danger)] hover:bg-[var(--danger-bg)] transition-colors" title="ลบสไลด์นี้">
+              <button id="slide-delete-btn" onclick="deleteActiveSlide()" class="admin-only w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--danger)] hover:bg-[var(--danger-bg)] transition-colors" title="ลบสไลด์นี้">
                 <i class="ph ph-trash text-sm"></i>
               </button>
               <button id="slide-close-btn" onclick="toggleSplitMode()" class="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--s3)] transition-colors" title="ปิดหน้าต่างสไลด์">
@@ -678,9 +692,9 @@
               </div>
               <div class="space-y-1 max-w-xs">
                 <h3 class="text-sm font-semibold text-[var(--tx)]">ยังไม่มีสไลด์เรียนในวิชานี้</h3>
-                <p class="text-xs text-[var(--tx2)]">ลากไฟล์ PDF / รูปสไลด์มาวางตรงนี้ หรือกดปุ่มเพิ่มสไลด์ด้านล่างได้เลย</p>
+                <p class="text-xs text-[var(--tx2)]">ยังไม่มีไฟล์ PDF หรือรูปสไลด์อัปโหลดไว้ในวิชานี้</p>
               </div>
-              <button onclick="openAddSlideModal()" class="sv-btn-primary h-9 px-4 rounded-xl text-xs flex items-center gap-1.5">
+              <button onclick="openAddSlideModal()" class="admin-only sv-btn-primary h-9 px-4 rounded-xl text-xs flex items-center gap-1.5">
                 <i class="ph ph-upload-simple text-sm"></i>
                 <span>เพิ่มสไลด์เรียนแรก</span>
               </button>
@@ -1056,6 +1070,100 @@
     </div>
   </div>
 
+  <!-- ===================================================================== -->
+  <!-- MODAL 4: ADMIN GITHUB SYNC (เจ้าของเว็บลงวิชา/โค้ด/สไลด์ให้ทุกคนเห็น) -->
+  <!-- ===================================================================== -->
+  <div id="admin-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="sv-surface w-full max-w-lg rounded-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div class="px-5 py-3.5 border-b border-[var(--line)] flex items-center justify-between bg-[var(--rail)]">
+        <div class="flex items-center gap-2">
+          <i class="ph ph-cloud-arrow-up text-[var(--accent)] text-lg"></i>
+          <h3 class="font-bold text-sm text-[var(--tx)]">โหมดเจ้าของเว็บ (ซิงก์ให้ทุกคนเห็น)</h3>
+        </div>
+        <button onclick="closeAdminModal()" class="p-1 text-[var(--tx3)] hover:text-[var(--tx)] rounded-lg">
+          <i class="ph ph-x text-base"></i>
+        </button>
+      </div>
+
+      <div class="p-5 overflow-y-auto custom-scrollbar space-y-4 text-xs">
+        <div id="admin-status-banner" class="p-3 rounded-xl bg-[var(--rail)] border border-[var(--line)] space-y-1">
+          <div class="flex items-center justify-between gap-2">
+            <span id="admin-status-title" class="font-bold text-[var(--tx)]">🔒 ยังไม่ได้ล็อกอินโหมดเจ้าของเว็บ</span>
+            <span id="admin-sync-state-badge" class="text-[10px] px-2 py-0.5 rounded-full bg-[var(--s3)] text-[var(--accent)] font-semibold">Visitor Mode</span>
+          </div>
+          <p id="admin-status-desc" class="text-[11px] text-[var(--tx3)] leading-relaxed">
+            ทุกคนสามารถเปิดอ่านบทเรียน ดูสไลด์สะอาดๆ และจดโน้ต GoodNotes ส่วนตัวได้ แต่เฉพาะเจ้าของเว็บที่ใส่ GitHub Token เท่านั้นที่จะเพิ่ม/ลบวิชา วางโค้ด HTML และอัปโหลดสไลด์ PDF ขึ้นเว็บกลางให้ทุกคนเห็นได้
+          </p>
+        </div>
+
+        <form id="admin-config-form" class="space-y-3">
+          <div class="grid grid-cols-3 gap-2">
+            <div>
+              <label class="block text-[11px] font-medium text-[var(--tx3)] mb-1">Owner</label>
+              <input type="text" id="admin-gh-owner" value="PhumshopRT" required class="sv-input w-full h-8 px-2.5 rounded-lg font-mono text-[11px]">
+            </div>
+            <div>
+              <label class="block text-[11px] font-medium text-[var(--tx3)] mb-1">Repository</label>
+              <input type="text" id="admin-gh-repo" value="STUDY_WEB" required class="sv-input w-full h-8 px-2.5 rounded-lg font-mono text-[11px]">
+            </div>
+            <div>
+              <label class="block text-[11px] font-medium text-[var(--tx3)] mb-1">Branch</label>
+              <input type="text" id="admin-gh-branch" value="main" required class="sv-input w-full h-8 px-2.5 rounded-lg font-mono text-[11px]">
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-xs font-semibold text-[var(--tx2)]">GitHub Token ส่วนตัว *</label>
+              <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer" class="text-[11px] text-[var(--accent)] hover:underline flex items-center gap-1">
+                <span>สร้าง Token ที่ GitHub</span>
+                <i class="ph ph-arrow-square-out"></i>
+              </a>
+            </div>
+            <div class="relative flex items-center">
+              <input type="password" id="admin-gh-token" placeholder="github_pat_... หรือ ghp_..." class="sv-input w-full h-9 pl-3 pr-9 rounded-xl font-mono text-[11px]">
+              <button type="button" onclick="toggleAdminTokenVisibility()" class="absolute right-2.5 text-[var(--tx3)] hover:text-[var(--tx)]" title="แสดง/ซ่อน Token">
+                <i id="admin-token-eye" class="ph ph-eye text-sm"></i>
+              </button>
+            </div>
+            <p class="text-[10px] text-[var(--tx3)] mt-1 leading-relaxed">
+              วิธีสร้าง (ทำครั้งเดียวต่อเครื่อง): กดลิงก์ด้านบน → ตั้งชื่อ เช่น StudyHub → ช่อง <b>Repository access</b> เลือกเฉพาะ <b>STUDY_WEB</b> → ช่อง <b>Permissions → Repository permissions → Contents</b> ปรับเป็น <b>Read and write</b> → Generate แล้วนำมาวางตรงนี้
+            </p>
+          </div>
+
+          <label class="flex items-center gap-2 p-2.5 rounded-xl bg-[var(--rail)] border border-[var(--line)] cursor-pointer select-none">
+            <input type="checkbox" id="admin-auto-sync" checked class="w-4 h-4 rounded accent-[var(--accent)]">
+            <span class="text-[11px] text-[var(--tx2)] font-medium">อัปโหลดขึ้นเว็บให้ทุกคนเห็นอัตโนมัติทุกครั้งที่กดเพิ่ม / แก้ไข / ลบ</span>
+          </label>
+
+          <div class="flex flex-col sm:flex-row gap-2 pt-1">
+            <button type="submit" id="admin-save-btn" class="sv-btn-primary flex-1 h-9 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5">
+              <i class="ph ph-check-circle text-sm"></i>
+              <span>บันทึกและเปิดใช้งานโหมดเจ้าของเว็บ</span>
+            </button>
+            <button type="button" onclick="logoutAdminMode()" id="admin-logout-btn" class="admin-only h-9 px-3 rounded-xl bg-[var(--danger-bg)] text-[var(--danger)] font-medium text-xs hover:opacity-85 transition">
+              ล็อกออก
+            </button>
+          </div>
+        </form>
+
+        <div id="admin-sync-actions" class="admin-only pt-3 border-t border-[var(--line)] space-y-2.5">
+          <div class="flex items-center justify-between text-[11px]">
+            <span class="font-semibold text-[var(--tx2)]">การซิงก์ขึ้น GitHub Pages</span>
+            <span id="admin-last-sync-text" class="text-[var(--tx3)] tnum">พร้อมอัปโหลด</span>
+          </div>
+          <button type="button" onclick="manualPublishToGitHub()" id="admin-manual-sync-btn" class="w-full h-9 px-4 rounded-xl bg-[var(--s3)] hover:bg-[var(--s4)] border border-[var(--accent-32)] text-[var(--accent)] font-semibold text-xs flex items-center justify-center gap-1.5 transition">
+            <i class="ph ph-cloud-arrow-up text-sm"></i>
+            <span>อัปโหลดวิชา โค้ด และสไลด์ขึ้นเว็บให้ทุกคนเห็นทันที</span>
+          </button>
+          <p class="text-[10px] text-[var(--tx3)] leading-relaxed">
+            * ลายมือปากกา/ไฮไลท์บนสไลด์จะไม่ถูกส่งขึ้นเว็บกลาง เพื่อนๆ ที่เปิดเว็บเข้ามาจะเห็นเป็นสไลด์สะอาดๆ ก่อนจด และสามารถจดโน้ตส่วนตัวเก็บไว้บนเครื่องตัวเองได้ครับ
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast + Undo Bar -->
   <div id="toast" class="hidden fixed bottom-5 right-5 z-50 sv-bar rounded-xl overflow-hidden min-w-[260px]">
     <div class="px-4 py-2.5 flex items-center justify-between gap-3 text-xs font-medium text-[var(--tx)]">
@@ -1090,6 +1198,7 @@
   <!-- Scripts -->
   <script src="db.js"></script>
   <script src="data.js"></script>
+  <script src="sync.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

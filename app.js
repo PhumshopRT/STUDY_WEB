@@ -89,8 +89,10 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.setItem(LS_FAVORITES, JSON.stringify([...favorites]));
   }
 
+  let sharedBaseSubjects = typeof SUBJECTS_DATA !== "undefined" ? SUBJECTS_DATA : [];
+
   function getMergedSubjects() {
-    const base = [...customSubjects, ...SUBJECTS_DATA].filter(s => !deletedSubjectIds.has(s.id));
+    const base = [...customSubjects, ...sharedBaseSubjects].filter(s => !deletedSubjectIds.has(s.id));
     return base.map(sub => {
       const extraLinks = customLinksMap[sub.id] || [];
       const baseLinks = Array.isArray(sub.links) ? sub.links : [];
@@ -194,7 +196,214 @@ document.addEventListener("DOMContentLoaded", () => {
   const toastUndoBtn = document.getElementById("toast-undo-btn");
   const toastProgress = document.getElementById("toast-progress");
 
-  // Cached Blob Resolver
+  // Admin Mode & GitHub Sync Controller
+  const adminModal = document.getElementById("admin-modal");
+  const adminNavBtn = document.getElementById("open-admin-btn");
+  const adminNavIcon = document.getElementById("admin-nav-icon");
+  const adminNavLabel = document.getElementById("admin-nav-label");
+
+  function isAdminMode() {
+    return typeof StudyVaultSync !== "undefined" && StudyVaultSync.isAdminEnabled();
+  }
+
+  function formatSyncTime(iso) {
+    if (!iso) return "ยังไม่เคยซิงก์จากเครื่องนี้";
+    try {
+      return "ซิงก์ล่าสุด: " + new Date(iso).toLocaleString("th-TH");
+    } catch {
+      return "ซิงก์ล่าสุดแล้ว";
+    }
+  }
+
+  function syncAdminUI() {
+    const unlocked = isAdminMode();
+    const cfg = typeof StudyVaultSync !== "undefined" ? StudyVaultSync.getConfig() : {};
+    document.body.dataset.admin = unlocked ? "true" : "false";
+
+    if (adminNavBtn && adminNavIcon && adminNavLabel) {
+      if (unlocked) {
+        adminNavBtn.className = "h-8 px-2.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/20 flex items-center gap-1.5 transition-colors text-xs font-semibold whitespace-nowrap";
+        adminNavIcon.className = "ph ph-cloud-check text-sm text-emerald-400";
+        adminNavLabel.textContent = "Admin Sync";
+      } else {
+        adminNavBtn.className = "h-8 px-2.5 rounded-xl border border-[var(--line)] bg-[var(--s1)] hover:bg-[var(--s3)] text-[var(--tx2)] hover:text-[var(--tx)] flex items-center gap-1.5 transition-colors text-xs font-medium whitespace-nowrap";
+        adminNavIcon.className = "ph ph-lock-key text-sm text-[var(--tx3)]";
+        adminNavLabel.textContent = "เจ้าของเว็บ (Admin)";
+      }
+    }
+
+    const titleEl = document.getElementById("admin-status-title");
+    const badgeEl = document.getElementById("admin-sync-state-badge");
+    const descEl = document.getElementById("admin-status-desc");
+    const lastSyncEl = document.getElementById("admin-last-sync-text");
+    if (titleEl && badgeEl && descEl) {
+      if (unlocked) {
+        titleEl.textContent = `🟢 เชื่อมต่อ ${cfg.owner}/${cfg.repo} (${cfg.branch}) แล้ว`;
+        badgeEl.textContent = cfg.autoSync ? "Auto-Sync เปิดอยู่" : "Manual Sync";
+        badgeEl.className = "text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold";
+        descEl.textContent = "ทุกวิชา ลิงก์ โค้ด HTML และสไลด์ PDF ที่คุณเพิ่ม/ลบ จะอัปโหลดขึ้น GitHub ให้ทุกคนเปิดมาเห็นตรงกัน (ลายมือโน้ตจะแยกเฉพาะเครื่องของแต่ละคน)";
+      } else {
+        titleEl.textContent = "🔒 ยังไม่ได้ล็อกอินโหมดเจ้าของเว็บ";
+        badgeEl.textContent = "Visitor Mode";
+        badgeEl.className = "text-[10px] px-2 py-0.5 rounded-full bg-[var(--s3)] text-[var(--accent)] font-semibold";
+        descEl.textContent = "ทุกคนสามารถเปิดอ่านบทเรียน ดูสไลด์สะอาดๆ และจดโน้ต GoodNotes ส่วนตัวได้ แต่เฉพาะเจ้าของเว็บที่ใส่ GitHub Token เท่านั้นที่จะเพิ่ม/ลบวิชา วางโค้ด HTML และอัปโหลดสไลด์ PDF ขึ้นเว็บกลางให้ทุกคนเห็นได้";
+      }
+    }
+    if (lastSyncEl) lastSyncEl.textContent = formatSyncTime(cfg.lastSyncAt);
+  }
+
+  window.openAdminModal = function() {
+    if (typeof StudyVaultSync !== "undefined") {
+      const cfg = StudyVaultSync.getConfig();
+      const ownerIn = document.getElementById("admin-gh-owner");
+      const repoIn = document.getElementById("admin-gh-repo");
+      const branchIn = document.getElementById("admin-gh-branch");
+      const tokenIn = document.getElementById("admin-gh-token");
+      const autoIn = document.getElementById("admin-auto-sync");
+      if (ownerIn) ownerIn.value = cfg.owner || "PhumshopRT";
+      if (repoIn) repoIn.value = cfg.repo || "STUDY_WEB";
+      if (branchIn) branchIn.value = cfg.branch || "main";
+      if (tokenIn) tokenIn.value = cfg.token || "";
+      if (autoIn) autoIn.checked = cfg.autoSync !== false;
+    }
+    syncAdminUI();
+    adminModal?.classList.remove("hidden");
+  };
+
+  window.closeAdminModal = () => adminModal?.classList.add("hidden");
+
+  window.toggleAdminTokenVisibility = function() {
+    const inp = document.getElementById("admin-gh-token");
+    const eye = document.getElementById("admin-token-eye");
+    if (!inp || !eye) return;
+    const show = inp.type === "password";
+    inp.type = show ? "text" : "password";
+    eye.className = show ? "ph ph-eye-slash text-sm" : "ph ph-eye text-sm";
+  };
+
+  window.logoutAdminMode = function() {
+    if (typeof StudyVaultSync !== "undefined") StudyVaultSync.clearConfigToken();
+    const tokenIn = document.getElementById("admin-gh-token");
+    if (tokenIn) tokenIn.value = "";
+    syncAdminUI();
+    if (activeSubjectId) openSubject(activeSubjectId, false);
+    else renderSubjectsGrid();
+    showToast("ออกจากโหมดเจ้าของเว็บแล้ว");
+  };
+
+  async function cacheLocalAssetsBeforeCleanup(subjectsList) {
+    for (const sub of subjectsList) {
+      for (const link of sub.links || []) {
+        if (link.idbKey) {
+          const blob = await StudyVaultDB.getBlob(link.idbKey).catch(() => null);
+          if (blob instanceof Blob) await StudyVaultDB.setBlob("cached-link-" + link.id, blob).catch(() => {});
+        }
+      }
+      for (const sl of sub.slides || []) {
+        if (sl.idbKey) {
+          const blob = await StudyVaultDB.getBlob(sl.idbKey).catch(() => null);
+          if (blob) await StudyVaultDB.setBlob("cached-slide-" + sl.id, blob).catch(() => {});
+        }
+      }
+    }
+  }
+
+  async function syncLibraryToGitHub(isAuto = false) {
+    if (!isAdminMode() || typeof StudyVaultSync === "undefined") return false;
+    const manualBtn = document.getElementById("admin-manual-sync-btn");
+    const lastSyncEl = document.getElementById("admin-last-sync-text");
+    if (manualBtn) manualBtn.disabled = true;
+
+    const updateStatus = msg => {
+      if (adminNavLabel) adminNavLabel.textContent = msg.includes("กำลัง") ? "กำลังซิงก์..." : "Admin Sync";
+      if (lastSyncEl) lastSyncEl.textContent = msg;
+    };
+
+    try {
+      await cacheLocalAssetsBeforeCleanup(getMergedSubjects());
+      const res = await StudyVaultSync.publishLibrary(() => getMergedSubjects(), updateStatus);
+      sharedBaseSubjects = res.cleanSubjects;
+      customSubjects = [];
+      deletedSubjectIds.clear();
+      customLinksMap = {};
+      deletedLinkIds.clear();
+      linkOverrides = {};
+      customSlidesMap = {};
+      deletedSlideIds.clear();
+      saveState();
+      allSubjects = getMergedSubjects();
+      syncAdminUI();
+      if (activeSubjectId) {
+        const sub = allSubjects.find(s => s.id === activeSubjectId);
+        if (sub) {
+          renderWorkspaceLinks(sub);
+          renderWorkspaceSlides(sub);
+        }
+      } else {
+        renderSubjectsGrid();
+      }
+      showToast("☁️ อัปโหลดขึ้นเว็บกลางแล้ว (รอ ~20–40 วิทุกคนจะเห็น)");
+      return true;
+    } catch (err) {
+      console.error("GitHub Sync failed:", err);
+      syncAdminUI();
+      if (lastSyncEl) lastSyncEl.textContent = `ผิดพลาด: ${err.message}`;
+      showToast(isAuto
+        ? `บันทึกในเครื่องแล้ว (ซิงก์ขึ้น GitHub ไม่สำเร็จ: ${err.message})`
+        : `ซิงก์ไม่สำเร็จ: ${err.message}`);
+      return false;
+    } finally {
+      if (manualBtn) manualBtn.disabled = false;
+    }
+  }
+
+  function triggerAutoSyncIfEnabled() {
+    if (!isAdminMode() || typeof StudyVaultSync === "undefined") return;
+    if (StudyVaultSync.getConfig().autoSync) {
+      syncLibraryToGitHub(true);
+    }
+  }
+
+  window.manualPublishToGitHub = () => syncLibraryToGitHub(false);
+
+  document.getElementById("admin-config-form")?.addEventListener("submit", async e => {
+    e.preventDefault();
+    if (typeof StudyVaultSync === "undefined") return;
+    const owner = document.getElementById("admin-gh-owner").value.trim();
+    const repo = document.getElementById("admin-gh-repo").value.trim();
+    const branch = document.getElementById("admin-gh-branch").value.trim() || "main";
+    const token = document.getElementById("admin-gh-token").value.trim();
+    const autoSync = Boolean(document.getElementById("admin-auto-sync").checked);
+
+    const saveBtn = document.getElementById("admin-save-btn");
+    if (!token) {
+      showToast("กรุณากรอก GitHub Token");
+      return;
+    }
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+      await StudyVaultSync.verifyRepoAccess({ owner, repo, branch, token });
+      StudyVaultSync.saveConfig({ owner, repo, branch, token, autoSync });
+      syncAdminUI();
+      if (activeSubjectId) openSubject(activeSubjectId, false);
+      else renderSubjectsGrid();
+      showToast("ปลดล็อกโหมดเจ้าของเว็บสำเร็จ!");
+
+      const hasPendingLocal = customSubjects.length > 0 || deletedSubjectIds.size > 0 ||
+        Object.keys(customLinksMap).length > 0 || deletedLinkIds.size > 0 ||
+        Object.keys(linkOverrides).length > 0 || Object.keys(customSlidesMap).length > 0 || deletedSlideIds.size > 0;
+      if (hasPendingLocal && autoSync) {
+        await syncLibraryToGitHub(true);
+      }
+      closeAdminModal();
+    } catch (err) {
+      showToast(`ตรวจสอบ Token ไม่ผ่าน: ${err.message}`);
+    } finally {
+      if (saveBtn) saveBtn.disabled = false;
+    }
+  });
+
+  // Cached Blob Resolver (supports both local IDB blobs & shared GitHub assets)
   async function resolveResourceUrl(item) {
     if (!item) return "";
     if (item.idbKey) {
@@ -210,16 +419,47 @@ document.addEventListener("DOMContentLoaded", () => {
         console.error("IDB load failed:", e);
       }
     }
+    if (item.id) {
+      const cacheKey = "cached-link-" + item.id;
+      if (blobUrlCache.has(cacheKey)) return blobUrlCache.get(cacheKey);
+      try {
+        const cached = await StudyVaultDB.getBlob(cacheKey);
+        if (cached instanceof Blob) {
+          const url = URL.createObjectURL(cached);
+          blobUrlCache.set(cacheKey, url);
+          return url;
+        }
+      } catch {}
+    }
     return item.url || "";
   }
 
-  async function resolveImageDeckUrls(idbKey) {
-    if (blobUrlCache.has(idbKey)) return blobUrlCache.get(idbKey);
-    const blobs = await StudyVaultDB.getBlob(idbKey);
-    if (Array.isArray(blobs) && blobs.length > 0) {
-      const urls = blobs.map(b => URL.createObjectURL(b));
-      blobUrlCache.set(idbKey, urls);
-      return urls;
+  async function resolveImageDeckUrls(slOrKey) {
+    if (!slOrKey) return [];
+    const idbKey = typeof slOrKey === "string" ? slOrKey : slOrKey.idbKey;
+    const slideId = typeof slOrKey === "object" ? slOrKey.id : null;
+
+    if (idbKey) {
+      if (blobUrlCache.has(idbKey)) return blobUrlCache.get(idbKey);
+      const blobs = await StudyVaultDB.getBlob(idbKey).catch(() => null);
+      if (Array.isArray(blobs) && blobs.length > 0) {
+        const urls = blobs.map(b => URL.createObjectURL(b));
+        blobUrlCache.set(idbKey, urls);
+        return urls;
+      }
+    }
+    if (slideId) {
+      const cKey = "cached-slide-" + slideId;
+      if (blobUrlCache.has(cKey)) return blobUrlCache.get(cKey);
+      const cached = await StudyVaultDB.getBlob(cKey).catch(() => null);
+      if (Array.isArray(cached) && cached.length > 0) {
+        const urls = cached.map(b => URL.createObjectURL(b));
+        blobUrlCache.set(cKey, urls);
+        return urls;
+      }
+    }
+    if (typeof slOrKey === "object" && Array.isArray(slOrKey.urls) && slOrKey.urls.length > 0) {
+      return slOrKey.urls;
     }
     return [];
   }
@@ -357,8 +597,10 @@ document.addEventListener("DOMContentLoaded", () => {
             <i class="ph ph-books"></i>
           </div>
           <p class="text-sm font-bold text-[var(--tx)]">ยังไม่มีรายวิชาในหมวดนี้</p>
-          <p class="text-xs text-[var(--tx3)] mt-1 mb-4">เพิ่มรายวิชาใหม่ (ใส่แค่รหัสวิชากับชื่อวิชา) เพื่อเริ่มต้นจัดเก็บลิงก์และสไลด์</p>
-          <button onclick="document.getElementById('open-add-subject-btn').click()" class="sv-btn-primary h-9 px-4 rounded-xl text-xs">+ เพิ่มวิชาใหม่</button>
+          <p class="admin-only text-xs text-[var(--tx3)] mt-1 mb-4">เพิ่มรายวิชาใหม่ (ใส่แค่รหัสวิชากับชื่อวิชา) เพื่อเริ่มต้นจัดเก็บลิงก์และสไลด์</p>
+          <p class="visitor-only text-xs text-[var(--tx3)] mt-1 mb-4">ยังไม่มีรายวิชาเผยแพร่อยู่ในขณะนี้ หากคุณเป็นเจ้าของเว็บสามารถล็อกอิน Admin เพื่อเพิ่มวิชาได้</p>
+          <button onclick="document.getElementById('open-add-subject-btn').click()" class="admin-only sv-btn-primary h-9 px-4 rounded-xl text-xs">+ เพิ่มวิชาใหม่</button>
+          <button onclick="openAdminModal()" class="visitor-only sv-btn-primary h-9 px-4 rounded-xl text-xs">🔑 เจ้าของเว็บ (Admin)</button>
         </div>
       `;
       return;
@@ -366,7 +608,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const resolvedCards = await Promise.all(filtered.map(async sub => {
       let previewSrc = null;
-      const firstEmbeddable = sub.links.find(l => l.idbKey || (!l.frameRestricted && !isLikelyRestrictedUrl(l.url)));
+      const firstEmbeddable = sub.links.find(l => l.idbKey || (l.url && !l.frameRestricted && !isLikelyRestrictedUrl(l.url)));
       if (firstEmbeddable) {
         previewSrc = await resolveResourceUrl(firstEmbeddable);
       }
@@ -385,7 +627,7 @@ document.addEventListener("DOMContentLoaded", () => {
               <i class="ph ph-presentation-chart text-pink-400"></i>
               <span>เลือกสไลด์อ่าน (${sub.slides.length})</span>
             </span>
-            <button onclick="openAddSlideModalForSubject('${sub.id}')" class="text-[10px] font-medium text-[var(--tx3)] hover:text-[var(--accent)] transition">+ เพิ่ม</button>
+            <button onclick="openAddSlideModalForSubject('${sub.id}')" class="admin-only text-[10px] font-medium text-[var(--tx3)] hover:text-[var(--accent)] transition">+ เพิ่ม</button>
           </div>
           <div class="flex flex-wrap gap-1.5">
             ${sub.slides.slice(0, 4).map(sl => `
@@ -398,7 +640,7 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
         </div>
       ` : `
-        <div class="pt-2.5 border-t border-[var(--line)] flex items-center justify-between gap-2" onclick="event.stopPropagation()">
+        <div class="admin-only pt-2.5 border-t border-[var(--line)] flex items-center justify-between gap-2" onclick="event.stopPropagation()">
           <span class="text-[11px] text-[var(--tx3)] flex items-center gap-1">
             <i class="ph ph-presentation-chart"></i>
             <span>ยังไม่มีสไลด์</span>
@@ -443,7 +685,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 </div>
                 <span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[var(--s1)] border border-[var(--line)] text-[var(--accent)] mb-1.5 tnum">${sub.code}</span>
                 <p class="text-xs font-semibold text-[var(--tx)] line-clamp-1 max-w-[240px]">${firstLink ? firstLink.title : sub.title}</p>
-                <p class="text-[11px] text-[var(--tx3)] mt-1">${firstLink ? 'กดเข้าวิชาเพื่อเปิดอ่าน หรือเลือกสไลด์ด้านล่าง' : 'คลิกเพื่อเพิ่มลิงก์หรือสไลด์ PDF'}</p>
+                <p class="text-[11px] text-[var(--tx3)] mt-1">${firstLink ? 'กดเข้าวิชาเพื่อเปิดอ่าน หรือเลือกสไลด์ด้านล่าง' : 'คลิกเพื่อดูรายละเอียดรายวิชานี้'}</p>
               </div>
             `}
 
@@ -470,7 +712,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 <button onclick="event.stopPropagation(); toggleFavorite('${sub.id}')" class="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-[var(--s3)] transition-colors ${isFav ? 'text-amber-400' : 'text-[var(--tx4)] hover:text-amber-400'}" title="ติดดาว">
                   <i class="ph ${isFav ? 'ph-star-fill' : 'ph-star'} text-sm"></i>
                 </button>
-                <button onclick="event.stopPropagation(); deleteSubject('${sub.id}')" class="h-7 px-2 rounded-lg flex items-center gap-1 text-[11px] font-medium text-[var(--danger)] bg-[var(--danger-bg)] hover:opacity-80 transition-opacity" title="ลบวิชานี้">
+                <button onclick="event.stopPropagation(); deleteSubject('${sub.id}')" class="admin-only h-7 px-2 rounded-lg flex items-center gap-1 text-[11px] font-medium text-[var(--danger)] bg-[var(--danger-bg)] hover:opacity-80 transition-opacity" title="ลบวิชานี้">
                   <i class="ph ph-trash text-xs"></i>
                   <span>ลบ</span>
                 </button>
@@ -584,7 +826,9 @@ document.addEventListener("DOMContentLoaded", () => {
       renderManageSubjectsList();
       syncSubjectSelects();
       renderSubjectsGrid();
+      triggerAutoSyncIfEnabled();
     });
+    triggerAutoSyncIfEnabled();
   };
 
   // 5. Level 2: Subject Workspace + Direct Slide Entry
@@ -689,7 +933,7 @@ document.addEventListener("DOMContentLoaded", () => {
       wsLinksList.innerHTML = `
         <div class="sv-rail p-4 rounded-xl text-center space-y-2">
           <p class="text-xs text-[var(--tx3)]">ยังไม่มีลิงก์บทเรียน</p>
-          <button onclick="openAddLinkModal()" class="text-xs text-[var(--accent)] font-semibold hover:underline">+ เพิ่มลิงก์แรก</button>
+          <button onclick="openAddLinkModal()" class="admin-only text-xs text-[var(--accent)] font-semibold hover:underline">+ เพิ่มลิงก์แรก</button>
         </div>
       `;
       return;
@@ -718,7 +962,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 ${link.badge || link.type || "Web"}
               </span>
               <div class="flex items-center gap-0.5">
-                <button onclick="event.stopPropagation(); openEditLinkModal('${link.id}')" class="text-[var(--tx3)] hover:text-[var(--accent)] p-1 rounded transition-colors" title="แก้ไข / วางโค้ด HTML">
+                <button onclick="event.stopPropagation(); openEditLinkModal('${link.id}')" class="admin-only text-[var(--tx3)] hover:text-[var(--accent)] p-1 rounded transition-colors" title="แก้ไข / วางโค้ด HTML">
                   <i class="ph ph-pencil-simple text-xs"></i>
                 </button>
                 ${link.url ? `
@@ -726,7 +970,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <i class="ph ph-arrow-square-out text-xs"></i>
                   </a>
                 ` : ''}
-                <button onclick="event.stopPropagation(); deleteLink('${link.id}')" class="text-[var(--danger)] hover:opacity-80 p-1 rounded transition-opacity" title="ลบลิงก์นี้">
+                <button onclick="event.stopPropagation(); deleteLink('${link.id}')" class="admin-only text-[var(--danger)] hover:opacity-80 p-1 rounded transition-opacity" title="ลบลิงก์นี้">
                   <i class="ph ph-trash text-xs"></i>
                 </button>
               </div>
@@ -772,7 +1016,9 @@ document.addEventListener("DOMContentLoaded", () => {
       allSubjects = getMergedSubjects();
       updateStats();
       if (activeSubjectId) openSubject(activeSubjectId, false);
+      triggerAutoSyncIfEnabled();
     });
+    triggerAutoSyncIfEnabled();
   };
 
   function showEmptyLinkStage() {
@@ -1057,7 +1303,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <i class="ph ${iconClass} text-sm ${isSelected ? 'text-[var(--accent)]' : 'text-[var(--tx3)]'} flex-shrink-0"></i>
             <span class="text-xs font-medium text-[var(--tx)] truncate">${sl.title}</span>
           </div>
-          <button onclick="event.stopPropagation(); deleteSlide('${sl.id}')" class="text-[var(--danger)] hover:opacity-80 p-1 transition" title="ลบสไลด์">
+          <button onclick="event.stopPropagation(); deleteSlide('${sl.id}')" class="admin-only text-[var(--danger)] hover:opacity-80 p-1 transition" title="ลบสไลด์">
             <i class="ph ph-trash text-xs"></i>
           </button>
         </div>
@@ -1696,7 +1942,24 @@ document.addEventListener("DOMContentLoaded", () => {
     slideIframe.classList.add("hidden");
     slideImageViewer.classList.add("hidden");
 
-    const blob = await StudyVaultDB.getBlob(idbKey);
+    let blob = idbKey ? await StudyVaultDB.getBlob(idbKey).catch(() => null) : null;
+    if (!blob && slideId) {
+      blob = await StudyVaultDB.getBlob("cached-slide-" + slideId).catch(() => null);
+    }
+    if (!blob && fallbackUrl) {
+      slidePdfViewer.classList.remove("hidden");
+      setPdfTool(activePdfTool);
+      pdfPagesContainer.innerHTML = `<div class="py-10 text-xs text-[var(--tx3)] text-center">กำลังดาวน์โหลดสไลด์ PDF...</div>`;
+      try {
+        const resp = await fetch(fallbackUrl);
+        if (resp.ok) {
+          blob = await resp.blob();
+          if (slideId) await StudyVaultDB.setBlob("cached-slide-" + slideId, blob).catch(() => {});
+        }
+      } catch (e) {
+        console.error("Shared PDF fetch failed:", e);
+      }
+    }
     if (!blob) {
       renderSlideEmpty();
       return;
@@ -1938,11 +2201,11 @@ document.addEventListener("DOMContentLoaded", () => {
     slideEmptyView.classList.add("hidden");
     slideDeleteBtn.classList.remove("hidden");
 
-    if (sl.type === "images" && sl.idbKey) {
+    if (sl.type === "images" && (sl.idbKey || (Array.isArray(sl.urls) && sl.urls.length > 0))) {
       slideIframe.classList.add("hidden");
       slidePdfViewer.classList.add("hidden");
       slideImageViewer.classList.remove("hidden");
-      const urls = await resolveImageDeckUrls(sl.idbKey);
+      const urls = await resolveImageDeckUrls(sl);
       if (urls.length > 0) {
         currentImageSlideUrls = urls;
         currentImageSlideIdx = 0;
@@ -1951,7 +2214,7 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         renderSlideEmpty();
       }
-    } else if (sl.type === "pdf" && sl.idbKey) {
+    } else if (sl.type === "pdf" && (sl.idbKey || sl.url)) {
       const fallbackUrl = await resolveResourceUrl(sl);
       await renderPdfSlide(sl.idbKey, fallbackUrl, sl.id, sl.title);
     } else {
@@ -1985,11 +2248,11 @@ document.addEventListener("DOMContentLoaded", () => {
     updateImageSlideView();
   };
 
-  // Drag & Drop PDF or Images into Slide Pane
+  // Drag & Drop PDF or Images into Slide Pane (Admin only)
   ["dragenter", "dragover"].forEach(ev => {
     slideDropZone.addEventListener(ev, e => {
       e.preventDefault();
-      slideDropZone.classList.add("drop-active");
+      if (isAdminMode()) slideDropZone.classList.add("drop-active");
     });
   });
   ["dragleave", "drop"].forEach(ev => {
@@ -2000,6 +2263,10 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   slideDropZone.addEventListener("drop", async e => {
     if (!activeSubjectId) return;
+    if (!isAdminMode()) {
+      showToast("เฉพาะเจ้าของเว็บ (Admin) เท่านั้นที่เพิ่มสไลด์ขึ้นเว็บกลางได้");
+      return;
+    }
     const files = Array.from(e.dataTransfer.files || []);
     if (files.length === 0) return;
 
@@ -2018,6 +2285,7 @@ document.addEventListener("DOMContentLoaded", () => {
       openSubject(activeSubjectId, false);
       selectSlide(sl.id, true);
       showToast(`เพิ่มสไลด์ PDF "${sl.title}" สำเร็จ`);
+      triggerAutoSyncIfEnabled();
     } else if (imgs.length > 0) {
       const key = "imgs-" + Date.now();
       await StudyVaultDB.setBlob(key, imgs);
@@ -2030,6 +2298,7 @@ document.addEventListener("DOMContentLoaded", () => {
       openSubject(activeSubjectId, false);
       selectSlide(sl.id, true);
       showToast(`เพิ่มสไลด์รูปภาพ ${imgs.length} หน้าสำเร็จ`);
+      triggerAutoSyncIfEnabled();
     }
   });
 
@@ -2067,7 +2336,9 @@ document.addEventListener("DOMContentLoaded", () => {
       allSubjects = getMergedSubjects();
       updateStats();
       if (activeSubjectId) openSubject(activeSubjectId, false);
+      triggerAutoSyncIfEnabled();
     });
+    triggerAutoSyncIfEnabled();
   };
 
   // =========================================================================
@@ -2121,6 +2392,7 @@ document.addEventListener("DOMContentLoaded", () => {
     syncSubjectSelects(newSub.id);
     e.target.reset();
     showToast(`เพิ่มวิชา "${code} — ${title}" แล้ว กดเพิ่มลิงก์หรือสไลด์ได้เลย`);
+    triggerAutoSyncIfEnabled();
   });
 
   // Subject Lock + Inline Create Helpers for Upload Modals
@@ -2303,7 +2575,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const patch = {
         title, subtitle,
         type: idbKey ? "Embedded HTML" : "Web App",
-        url, idbKey,
+        url: idbKey ? "" : url,
+        repoPath: "",
+        idbKey,
         badge: idbKey ? "HTML ในตัว" : "Web App",
         frameRestricted: !idbKey && isLikelyRestrictedUrl(url),
         updatedAt: today
@@ -2321,12 +2595,14 @@ document.addEventListener("DOMContentLoaded", () => {
       openSubject(targetSubId, false);
       selectLink(editId);
       showToast(idbKey ? "ฝังโค้ด HTML สำเร็จ! แสดงผลในกรอบเต็มๆ แล้ว" : "บันทึกการแก้ไขเรียบร้อย");
+      triggerAutoSyncIfEnabled();
     } else {
       const newLink = {
         id: "lnk-" + Date.now(),
         title, subtitle,
         type: idbKey ? "Embedded HTML" : "Web App",
-        url, idbKey,
+        url: idbKey ? "" : url,
+        idbKey,
         badge: idbKey ? "HTML ในตัว" : "ใหม่",
         frameRestricted: !idbKey && isLikelyRestrictedUrl(url),
         updatedAt: today
@@ -2340,6 +2616,7 @@ document.addEventListener("DOMContentLoaded", () => {
       openSubject(targetSubId, true);
       selectLink(newLink.id);
       showToast(`เพิ่มลิงก์ "${title}" เข้าวิชาเรียบร้อย`);
+      triggerAutoSyncIfEnabled();
     }
   });
 
@@ -2410,6 +2687,7 @@ document.addEventListener("DOMContentLoaded", () => {
     e.target.reset();
     openSubjectSlide(targetSubId, newSlide.id);
     showToast(`เพิ่มสไลด์ "${title}" และเปิดเทียบข้างๆ แล้ว`);
+    triggerAutoSyncIfEnabled();
   });
 
   // =========================================================================
@@ -2497,11 +2775,12 @@ document.addEventListener("DOMContentLoaded", () => {
       closeAddSubjectModal();
       closeAddLinkModal();
       closeAddSlideModal();
+      closeAdminModal();
     }
   });
 
   window.resetToDefaultData = async function() {
-    if (confirm("ต้องการล้างวิชา ลิงก์ และสไลด์ที่เพิ่มเอง แล้วรีเซ็ตเป็นค่าเริ่มต้นหรือไม่?")) {
+    if (confirm("ต้องการล้างข้อมูลและโน้ตที่เก็บเฉพาะในเครื่องนี้ เพื่อกลับไปรับข้อมูลล่าสุดจากเว็บกลางหรือไม่?")) {
       [LS_CUSTOM_SUBJECTS, LS_DELETED_SUBJECTS, LS_CUSTOM_LINKS, LS_DELETED_LINKS, LS_LINK_OVERRIDES, LS_CUSTOM_SLIDES, LS_DELETED_SLIDES, LS_FAVORITES, LS_LOCKED_SUBJECT].forEach(k => localStorage.removeItem(k));
       await StudyVaultDB.clearAll().catch(() => {});
       blobUrlCache.clear();
@@ -2511,7 +2790,7 @@ document.addEventListener("DOMContentLoaded", () => {
       lockedSubjectId = "";
       allSubjects = getMergedSubjects();
       updateStats(); renderCategories(); navigateHome();
-      showToast("รีเซ็ตข้อมูลทั้งหมดเรียบร้อย");
+      showToast("รีเซ็ตข้อมูลในเครื่องเรียบร้อย");
     }
   };
 
@@ -2527,39 +2806,54 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   window.addEventListener("resize", () => requestAnimationFrame(updateScopeThumb));
 
-  // Initialize
+  // Initialize (Sync UI first, then load shared library from GitHub / shared-library.json)
   initTheme();
-  updateStats();
-  renderCategories();
+  syncAdminUI();
 
-  const params = new URLSearchParams(window.location.search);
-  if (params.get("slidePopout") === "1") {
-    const subId = params.get("subject");
-    const slId = params.get("slide");
-    if (subId && allSubjects.some(s => s.id === subId)) {
-      mainTopbar.classList.add("hidden");
-      mainFooter.classList.add("hidden");
-      openSubject(subId, false);
-      wsSidebar.classList.add("hidden");
-      wsWebPane.classList.add("hidden");
-      splitResizer.classList.add("hidden");
-      wsSlidePane.classList.remove("hidden");
-      wsSlidePane.classList.add("flex");
-      wsSlidePane.style.flex = "1 1 100%";
-      slideCloseBtn.classList.add("hidden");
-      if (slId) selectSlide(slId, false);
-      return;
+  async function bootstrapApp() {
+    if (typeof StudyVaultSync !== "undefined") {
+      try {
+        sharedBaseSubjects = await StudyVaultSync.loadSharedSubjects();
+      } catch (e) {
+        console.warn("Using embedded fallback SUBJECTS_DATA:", e);
+      }
     }
+
+    allSubjects = getMergedSubjects();
+    updateStats();
+    renderCategories();
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("slidePopout") === "1") {
+      const subId = params.get("subject");
+      const slId = params.get("slide");
+      if (subId && allSubjects.some(s => s.id === subId)) {
+        mainTopbar.classList.add("hidden");
+        mainFooter.classList.add("hidden");
+        openSubject(subId, false);
+        wsSidebar.classList.add("hidden");
+        wsWebPane.classList.add("hidden");
+        splitResizer.classList.add("hidden");
+        wsSlidePane.classList.remove("hidden");
+        wsSlidePane.classList.add("flex");
+        wsSlidePane.style.flex = "1 1 100%";
+        slideCloseBtn.classList.add("hidden");
+        if (slId) selectSlide(slId, false);
+        return;
+      }
+    }
+
+    const initialHash = window.location.hash;
+    if (initialHash.startsWith("#subject/")) {
+      const id = initialHash.replace("#subject/", "");
+      if (allSubjects.some(s => s.id === id)) {
+        openSubject(id, false);
+        return;
+      }
+      history.replaceState("", document.title, window.location.pathname + window.location.search);
+    }
+    renderSubjectsGrid();
   }
 
-  const initialHash = window.location.hash;
-  if (initialHash.startsWith("#subject/")) {
-    const id = initialHash.replace("#subject/", "");
-    if (allSubjects.some(s => s.id === id)) {
-      openSubject(id, false);
-      return;
-    }
-    history.replaceState("", document.title, window.location.pathname + window.location.search);
-  }
-  renderSubjectsGrid();
+  bootstrapApp();
 });
