@@ -10,9 +10,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // App State
   let currentCategory = "ทั้งหมด";
   let selectedHomeSubjectId = "__ALL__";
-  let homeViewMode = "feed"; // 'feed' (newest topics/slides) | 'subjects' (1 card per subject)
+  let homeViewMode = "subjects"; // 'subjects' (Step 1: Subjects) | 'feed' (all newest topics)
   let searchQuery = "";
   let activeSubjectId = null;
+  let activeTopicId = null;
   let activeLinkId = null;
   let activeSlideId = null;
   let isSplitMode = false;
@@ -25,9 +26,9 @@ document.addEventListener("DOMContentLoaded", () => {
   let iframeTimeoutHandle = null;
 
   // Modal Modes
-  let lnkSourceMode = "url";
+  let topicLinkMode = "html"; // 'html' | 'url' | 'none'
+  let topicSlideMode = "pdf"; // 'pdf' | 'images' | 'url' | 'none'
   let lnkPairMode = "none";
-  let slideTypeMode = "pdf";
 
   const blobUrlCache = new Map();
   const pdfThumbCache = new Map();
@@ -37,6 +38,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const LS_FAVORITES = "studyvault_favorites";
   const LS_CUSTOM_SUBJECTS = "studyvault_custom_subjects";
   const LS_DELETED_SUBJECTS = "studyvault_deleted_subjects";
+  const LS_CUSTOM_TOPICS = "studyvault_custom_topics";
+  const LS_DELETED_TOPICS = "studyvault_deleted_topics";
+  const LS_TOPIC_OVERRIDES = "studyvault_topic_overrides";
   const LS_CUSTOM_LINKS = "studyvault_custom_links";
   const LS_DELETED_LINKS = "studyvault_deleted_links";
   const LS_LINK_OVERRIDES = "studyvault_link_overrides";
@@ -72,6 +76,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let customSubjects = loadJSON(LS_CUSTOM_SUBJECTS, []);
   let deletedSubjectIds = new Set(loadJSON(LS_DELETED_SUBJECTS, []));
+  let customTopicsMap = loadJSON(LS_CUSTOM_TOPICS, {});
+  let deletedTopicIds = new Set(loadJSON(LS_DELETED_TOPICS, []));
+  let topicOverrides = loadJSON(LS_TOPIC_OVERRIDES, {});
   let customLinksMap = loadJSON(LS_CUSTOM_LINKS, {});
   let deletedLinkIds = new Set(loadJSON(LS_DELETED_LINKS, []));
   let linkOverrides = loadJSON(LS_LINK_OVERRIDES, {});
@@ -87,6 +94,9 @@ document.addEventListener("DOMContentLoaded", () => {
   function saveState() {
     localStorage.setItem(LS_CUSTOM_SUBJECTS, JSON.stringify(customSubjects));
     localStorage.setItem(LS_DELETED_SUBJECTS, JSON.stringify([...deletedSubjectIds]));
+    localStorage.setItem(LS_CUSTOM_TOPICS, JSON.stringify(customTopicsMap));
+    localStorage.setItem(LS_DELETED_TOPICS, JSON.stringify([...deletedTopicIds]));
+    localStorage.setItem(LS_TOPIC_OVERRIDES, JSON.stringify(topicOverrides));
     localStorage.setItem(LS_CUSTOM_LINKS, JSON.stringify(customLinksMap));
     localStorage.setItem(LS_DELETED_LINKS, JSON.stringify([...deletedLinkIds]));
     localStorage.setItem(LS_LINK_OVERRIDES, JSON.stringify(linkOverrides));
@@ -98,22 +108,158 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let sharedBaseSubjects = typeof SUBJECTS_DATA !== "undefined" ? SUBJECTS_DATA : [];
 
+  function getItemSortTimestamp(item) {
+    if (!item) return 0;
+    if (typeof item.createdAt === "number" && item.createdAt > 0) return item.createdAt;
+    const m = String(item.id || "").match(/(\d{10,})/);
+    if (m) return Number(m[1]);
+    const parsed = Date.parse(item.updatedAt || "");
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+
+  function normalizeTopicMatchInfo(text) {
+    const raw = String(text || "").toLowerCase();
+    const chapMatch = raw.match(/^\s*0*(\d{1,3})(?=\s*[-._:)\]]|\s|$)|(?:บท(?:ที่)?|เรื่อง(?:ที่)?|chapter|chap|lec(?:ture)?|part|topic)\s*0*(\d{1,3})\b/i);
+    const chapter = chapMatch ? Number(chapMatch[1] || chapMatch[2]) : null;
+    const stop = new Set(["a", "an", "the", "and", "of", "in", "on", "to", "for", "with", "english", "thai", "slides", "slide", "pdf", "html", "summary", "interactive", "v1", "v2", "2020", "2021", "2022", "2023", "2024", "2025", "2026", "เรื่อง", "บท", "บทที่", "สไลด์", "สรุป", "เรื่องที่"]);
+    const parts = raw
+      .replace(/x[\s-]?ray/g, "xray")
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim()
+      .split(/\s+/)
+      .map(w => (/^\d+$/.test(w) ? String(Number(w)) : w))
+      .filter(w => w.length >= 2 && !stop.has(w));
+    return { chapter, tokens: new Set(parts) };
+  }
+
+  function pairLegacyLinksAndSlides(links, slides) {
+    const usedSlideIds = new Set();
+    const pairsByLinkId = new Map();
+
+    for (const link of links) {
+      if (link.pairedSlideId && !usedSlideIds.has(link.pairedSlideId)) {
+        const sl = slides.find(x => x.id === link.pairedSlideId);
+        if (sl) {
+          pairsByLinkId.set(link.id, sl);
+          usedSlideIds.add(sl.id);
+        }
+      }
+    }
+
+    const singlePairEligible = links.length === 1 && slides.length === 1;
+    const candidates = [];
+    for (const link of links) {
+      if (pairsByLinkId.has(link.id) || link.unpairedAuto) continue;
+      const lInfo = normalizeTopicMatchInfo(link.title);
+      for (const sl of slides) {
+        if (usedSlideIds.has(sl.id) || sl.unpairedAuto) continue;
+        const sInfo = normalizeTopicMatchInfo(sl.title);
+        if (lInfo.chapter !== null && sInfo.chapter !== null && lInfo.chapter !== sInfo.chapter) continue;
+
+        let shared = 0;
+        lInfo.tokens.forEach(t => { if (sInfo.tokens.has(t)) shared++; });
+        const sameChap = lInfo.chapter !== null && lInfo.chapter === sInfo.chapter;
+        const strongMatch = shared >= 2 || (shared >= 1 && sameChap) || singlePairEligible;
+        if (strongMatch) {
+          const score = shared * 10 + (sameChap ? 6 : 0) + (singlePairEligible ? 1 : 0);
+          candidates.push({ linkId: link.id, slide: sl, score });
+        }
+      }
+    }
+    candidates.sort((a, b) => b.score - a.score);
+    for (const cand of candidates) {
+      if (pairsByLinkId.has(cand.linkId) || usedSlideIds.has(cand.slide.id)) continue;
+      pairsByLinkId.set(cand.linkId, cand.slide);
+      usedSlideIds.add(cand.slide.id);
+    }
+
+    const topics = [];
+    links.forEach((link, idx) => {
+      const sl = pairsByLinkId.get(link.id) || null;
+      const lTs = getItemSortTimestamp(link) || (1000 - idx);
+      const sTs = sl ? (getItemSortTimestamp(sl) || (1000 - idx)) : 0;
+      const topId = `legtop-${link.id}`;
+      topics.push({
+        id: topId,
+        title: link.title,
+        subtitle: link.subtitle || "",
+        updatedAt: link.updatedAt || sl?.updatedAt || "",
+        createdAt: Math.max(lTs, sTs),
+        link,
+        slides: sl ? [sl] : [],
+        isLegacy: true,
+        _legacyLinkId: link.id,
+        _legacySlideIds: sl ? [sl.id] : []
+      });
+    });
+
+    slides.forEach((sl, idx) => {
+      if (usedSlideIds.has(sl.id)) return;
+      const sTs = getItemSortTimestamp(sl) || (1000 - idx);
+      topics.push({
+        id: `legtop-${sl.id}`,
+        title: sl.title,
+        subtitle: "",
+        updatedAt: sl.updatedAt || "",
+        createdAt: sTs,
+        link: null,
+        slides: [sl],
+        isLegacy: true,
+        _legacyLinkId: null,
+        _legacySlideIds: [sl.id]
+      });
+    });
+
+    return topics;
+  }
+
   function getMergedSubjects() {
-    const base = [...customSubjects, ...sharedBaseSubjects].filter(s => !deletedSubjectIds.has(s.id));
+    const subMap = new Map();
+    [...sharedBaseSubjects, ...customSubjects].forEach(s => {
+      if (!deletedSubjectIds.has(s.id)) subMap.set(s.id, s);
+    });
+    const base = [...customSubjects.filter(s => !deletedSubjectIds.has(s.id)), ...sharedBaseSubjects.filter(s => !deletedSubjectIds.has(s.id) && !customSubjects.some(c => c.id === s.id))];
+
     return base.map(sub => {
+      // Native Topics (from customTopicsMap + sub.topics, deduplicated by id)
+      const nativeMap = new Map();
+      const baseTopics = Array.isArray(sub.topics) ? sub.topics : [];
+      const customTopics = Array.isArray(customTopicsMap[sub.id]) ? customTopicsMap[sub.id] : [];
+      [...customTopics, ...baseTopics].forEach(t => {
+        if (!t || deletedTopicIds.has(t.id) || nativeMap.has(t.id)) return;
+        const ov = topicOverrides[t.id] || null;
+        const mergedT = ov ? { ...t, ...ov } : { ...t };
+        let cleanLink = mergedT.link && !deletedLinkIds.has(mergedT.link.id)
+          ? (linkOverrides[mergedT.link.id] ? { ...mergedT.link, ...linkOverrides[mergedT.link.id] } : { ...mergedT.link })
+          : null;
+        const cleanSlides = (Array.isArray(mergedT.slides) ? mergedT.slides : [])
+          .filter(sl => sl && !deletedSlideIds.has(sl.id))
+          .map(sl => (slideOverrides[sl.id] ? { ...sl, ...slideOverrides[sl.id] } : { ...sl }));
+        nativeMap.set(mergedT.id, { ...mergedT, link: cleanLink, slides: cleanSlides });
+      });
+
+      // Legacy Links & Slides (automatically organized into Topics while preserving IDs!)
       const extraLinks = customLinksMap[sub.id] || [];
       const baseLinks = Array.isArray(sub.links) ? sub.links : [];
-      const mergedLinks = [...extraLinks, ...baseLinks]
-        .filter(l => !deletedLinkIds.has(l.id))
+      const mergedLegacyLinks = [...extraLinks, ...baseLinks]
+        .filter(l => l && !deletedLinkIds.has(l.id))
         .map(l => (linkOverrides[l.id] ? { ...l, ...linkOverrides[l.id] } : l));
 
       const extraSlides = customSlidesMap[sub.id] || [];
       const baseSlides = Array.isArray(sub.slides) ? sub.slides : [];
-      const mergedSlides = [...extraSlides, ...baseSlides]
-        .filter(sl => !deletedSlideIds.has(sl.id))
+      const mergedLegacySlides = [...extraSlides, ...baseSlides]
+        .filter(sl => sl && !deletedSlideIds.has(sl.id))
         .map(sl => (slideOverrides[sl.id] ? { ...sl, ...slideOverrides[sl.id] } : sl));
 
-      return { ...sub, links: mergedLinks, slides: mergedSlides };
+      const legacyTopics = pairLegacyLinksAndSlides(mergedLegacyLinks, mergedLegacySlides)
+        .filter(t => !deletedTopicIds.has(t.id) && !nativeMap.has(t.id))
+        .map(t => (topicOverrides[t.id] ? { ...t, ...topicOverrides[t.id] } : t));
+
+      const topics = [...nativeMap.values(), ...legacyTopics];
+      const links = topics.map(t => t.link).filter(Boolean);
+      const slides = topics.flatMap(t => t.slides || []);
+
+      return { ...sub, topics, links, slides };
     });
   }
 
@@ -149,6 +295,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const wsCode = document.getElementById("ws-subject-code");
   const wsCategory = document.getElementById("ws-subject-category");
   const wsTitle = document.getElementById("ws-subject-title");
+  const wsTopicTitle = document.getElementById("ws-topic-title");
+  const wsTopicSwitcher = document.getElementById("ws-topic-switcher");
   const wsStarBtn = document.getElementById("ws-star-btn");
   const wsDeleteSubjectBtn = document.getElementById("ws-delete-subject-btn");
   const wsSplitToggleBtn = document.getElementById("ws-split-toggle-btn");
@@ -203,8 +351,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const addSubjectModal = document.getElementById("add-subject-modal");
   const manageSubjectsList = document.getElementById("manage-subjects-list");
   const manageSubjectsCount = document.getElementById("manage-subjects-count");
-  const addLinkModal = document.getElementById("add-link-modal");
-  const addSlideModal = document.getElementById("add-slide-modal");
+  const topicModal = document.getElementById("topic-modal");
   const pairTopicModal = document.getElementById("pair-topic-modal");
   const toastEl = document.getElementById("toast");
   const toastMsg = document.getElementById("toast-msg");
@@ -340,19 +487,24 @@ document.addEventListener("DOMContentLoaded", () => {
       sharedBaseSubjects = res.cleanSubjects;
       customSubjects = [];
       deletedSubjectIds.clear();
+      customTopicsMap = {};
+      deletedTopicIds.clear();
+      topicOverrides = {};
       customLinksMap = {};
       deletedLinkIds.clear();
       linkOverrides = {};
       customSlidesMap = {};
       deletedSlideIds.clear();
+      slideOverrides = {};
       saveState();
       allSubjects = getMergedSubjects();
       syncAdminUI();
       if (activeSubjectId) {
         const sub = allSubjects.find(s => s.id === activeSubjectId);
         if (sub) {
-          renderWorkspaceLinks(sub);
-          renderWorkspaceSlides(sub);
+          openSubject(activeSubjectId, false, { topicId: activeTopicId, slideId: activeSlideId, openSlides: isSplitMode });
+        } else {
+          navigateHome(true, "__ALL__");
         }
       } else {
         renderSubjectsGrid();
@@ -544,8 +696,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // 2. Stats & Sliding Categories
   function updateStats() {
     statSubjects.textContent = String(allSubjects.length).padStart(2, "0");
-    statLinks.textContent = String(allSubjects.reduce((s, x) => s + x.links.length, 0)).padStart(2, "0");
-    statSlides.textContent = String(allSubjects.reduce((s, x) => s + x.slides.length, 0)).padStart(2, "0");
+    statLinks.textContent = String(allSubjects.reduce((s, x) => s + (x.topics?.length || 0), 0)).padStart(2, "0");
+    statSlides.textContent = String(allSubjects.reduce((s, x) => s + (x.slides?.length || 0), 0)).padStart(2, "0");
     statFavorites.textContent = String(favorites.size).padStart(2, "0");
   }
 
@@ -598,14 +750,6 @@ document.addEventListener("DOMContentLoaded", () => {
     renderSubjectsGrid();
   };
 
-  function getItemSortTimestamp(item) {
-    if (!item) return 0;
-    const m = String(item.id || "").match(/(\d{10,})/);
-    if (m) return Number(m[1]);
-    const parsed = Date.parse(item.updatedAt || "");
-    return Number.isNaN(parsed) ? 0 : parsed;
-  }
-
   function syncHomeViewModeUI() {
     if (!homeViewModeGroup || !homeModeFeedBtn || !homeModeSubjectsBtn) return;
     homeViewModeGroup.classList.toggle("hidden", selectedHomeSubjectId !== "__ALL__");
@@ -616,6 +760,62 @@ document.addEventListener("DOMContentLoaded", () => {
     homeModeSubjectsBtn.className = !isFeed
       ? "px-2.5 py-1 rounded-lg bg-[var(--accent)] text-white font-semibold flex items-center gap-1 transition whitespace-nowrap"
       : "px-2.5 py-1 rounded-lg text-[var(--tx2)] hover:text-[var(--tx)] font-medium flex items-center gap-1 transition whitespace-nowrap";
+  }
+
+  function extractSubjectTopics(sub) {
+    return (sub.topics || []).map((t, idx) => {
+      const link = t.link || null;
+      const slides = Array.isArray(t.slides) ? t.slides : [];
+      const firstSlide = slides[0] || null;
+      const sortTs = Math.max(
+        getItemSortTimestamp(t),
+        getItemSortTimestamp(link),
+        ...slides.map(sl => getItemSortTimestamp(sl)),
+        1000 - idx
+      );
+      return {
+        kind: link ? "topic" : "slide",
+        sub,
+        topic: t,
+        link,
+        slide: firstSlide,
+        slides,
+        item: link || firstSlide || t,
+        paired: Boolean(link && slides.length > 0),
+        sortTs
+      };
+    });
+  }
+
+  function promoteTopicToCustom(subId, topicId) {
+    const sub = allSubjects.find(s => s.id === subId);
+    if (!sub) return null;
+    const topic = (sub.topics || []).find(t => t.id === topicId);
+    if (!topic) return null;
+
+    if (!customTopicsMap[subId]) customTopicsMap[subId] = [];
+    const existingIdx = customTopicsMap[subId].findIndex(t => t.id === topicId);
+    if (existingIdx !== -1) return customTopicsMap[subId][existingIdx];
+
+    const newId = topic.isLegacy ? topicId.replace(/^legtop-/, "top-") : topic.id;
+    const clone = {
+      id: newId,
+      title: topic.title,
+      subtitle: topic.subtitle || "",
+      updatedAt: topic.updatedAt || new Date().toISOString().split("T")[0],
+      createdAt: topic.createdAt || Date.now(),
+      link: topic.link ? { ...topic.link } : null,
+      slides: (topic.slides || []).map(sl => ({ ...sl }))
+    };
+
+    if (topic.isLegacy) {
+      if (topic._legacyLinkId) deletedLinkIds.add(topic._legacyLinkId);
+      (topic._legacySlideIds || []).forEach(sid => deletedSlideIds.add(sid));
+    }
+
+    customTopicsMap[subId].unshift(clone);
+    if (activeTopicId === topicId) activeTopicId = newId;
+    return clone;
   }
 
   function patchRecordFields(kind, targetSubId, itemId, patch) {
@@ -629,104 +829,6 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       overrideMap[itemId] = { ...(overrideMap[itemId] || {}), ...patch };
     }
-  }
-
-  function normalizeTopicMatchInfo(text) {
-    const raw = String(text || "").toLowerCase();
-    const chapMatch = raw.match(/^\s*0*(\d{1,3})(?=\s*[-._:)\]]|\s|$)|(?:บท(?:ที่)?|เรื่อง(?:ที่)?|chapter|chap|lec(?:ture)?|part|topic)\s*0*(\d{1,3})\b/i);
-    const chapter = chapMatch ? Number(chapMatch[1] || chapMatch[2]) : null;
-    const stop = new Set(["a", "an", "the", "and", "of", "in", "on", "to", "for", "with", "english", "thai", "slides", "slide", "pdf", "html", "summary", "interactive", "v1", "v2", "2020", "2021", "2022", "2023", "2024", "2025", "2026", "เรื่อง", "บท", "บทที่", "สไลด์", "สรุป", "เรื่องที่"]);
-    const parts = raw
-      .replace(/x[\s-]?ray/g, "xray")
-      .replace(/[^\p{L}\p{N}]+/gu, " ")
-      .trim()
-      .split(/\s+/)
-      .map(w => (/^\d+$/.test(w) ? String(Number(w)) : w))
-      .filter(w => w.length >= 2 && !stop.has(w));
-    return { chapter, tokens: new Set(parts) };
-  }
-
-  function extractSubjectTopics(sub) {
-    const links = sub.links || [];
-    const slides = sub.slides || [];
-    const usedSlideIds = new Set();
-    const pairsByLinkId = new Map();
-
-    // 1. Explicit pairedSlideId first
-    for (const link of links) {
-      if (link.pairedSlideId && !usedSlideIds.has(link.pairedSlideId)) {
-        const sl = slides.find(x => x.id === link.pairedSlideId);
-        if (sl) {
-          pairsByLinkId.set(link.id, sl);
-          usedSlideIds.add(sl.id);
-        }
-      }
-    }
-
-    // 2. Smart conservative matching for already-uploaded summaries & slides of the same topic
-    const singlePairEligible = links.length === 1 && slides.length === 1;
-    const candidates = [];
-    for (const link of links) {
-      if (pairsByLinkId.has(link.id) || link.unpairedAuto) continue;
-      const lInfo = normalizeTopicMatchInfo(link.title);
-      for (const sl of slides) {
-        if (usedSlideIds.has(sl.id) || sl.unpairedAuto) continue;
-        const sInfo = normalizeTopicMatchInfo(sl.title);
-        if (lInfo.chapter !== null && sInfo.chapter !== null && lInfo.chapter !== sInfo.chapter) continue;
-
-        let shared = 0;
-        lInfo.tokens.forEach(t => { if (sInfo.tokens.has(t)) shared++; });
-        const sameChap = lInfo.chapter !== null && lInfo.chapter === sInfo.chapter;
-        const strongMatch = shared >= 2 || (shared >= 1 && sameChap) || singlePairEligible;
-        if (strongMatch) {
-          const score = shared * 10 + (sameChap ? 6 : 0) + (singlePairEligible ? 1 : 0);
-          candidates.push({ linkId: link.id, slide: sl, score });
-        }
-      }
-    }
-    candidates.sort((a, b) => b.score - a.score);
-    for (const cand of candidates) {
-      if (pairsByLinkId.has(cand.linkId) || usedSlideIds.has(cand.slide.id)) continue;
-      pairsByLinkId.set(cand.linkId, cand.slide);
-      usedSlideIds.add(cand.slide.id);
-    }
-
-    const entries = [];
-    links.forEach((link, idx) => {
-      const sl = pairsByLinkId.get(link.id) || null;
-      const lTs = getItemSortTimestamp(link) || (1000 - idx);
-      const sTs = sl ? (getItemSortTimestamp(sl) || (1000 - idx)) : 0;
-      entries.push({
-        kind: "topic",
-        sub,
-        link,
-        slide: sl,
-        item: link,
-        paired: Boolean(sl),
-        sortTs: Math.max(lTs, sTs)
-      });
-    });
-
-    slides.forEach((sl, idx) => {
-      if (usedSlideIds.has(sl.id)) return;
-      entries.push({
-        kind: "slide",
-        sub,
-        link: null,
-        slide: sl,
-        item: sl,
-        paired: false,
-        sortTs: getItemSortTimestamp(sl) || (1000 - idx)
-      });
-    });
-
-    return entries;
-  }
-
-  function findPairedSlideForLink(sub, linkId) {
-    if (!sub || !linkId) return null;
-    const topic = extractSubjectTopics(sub).find(t => t.link && t.link.id === linkId);
-    return topic ? topic.slide : null;
   }
 
   function renderSubjectTabs(catSubjects) {
@@ -792,25 +894,21 @@ document.addEventListener("DOMContentLoaded", () => {
             <span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-[var(--accent-08)] text-[var(--accent)] border border-[var(--accent-32)] tnum">${activeSub.code}</span>
             <h2 class="font-bold text-sm sm:text-base text-[var(--tx)] truncate">${activeSub.title}</h2>
           </div>
-          <p class="text-[11px] text-[var(--tx3)] tnum mt-0.5">${topicsCount} บทเรียน • ${activeSub.links.length} สรุป / ลิงก์ • ${activeSub.slides.length} สไลด์เรียน (อัปใหม่ขึ้นก่อน)</p>
+          <p class="text-[11px] text-[var(--tx3)] tnum mt-0.5">${topicsCount} เรื่องในวิชานี้ • ${activeSub.slides.length} สไลด์เรียน (กดเข้าไปในแต่ละเรื่องเพื่อดูทั้งเว็บสรุป + สไลด์)</p>
         </div>
       </div>
 
       <div class="flex items-center gap-1.5 flex-wrap">
+        <button onclick="selectHomeSubject('__ALL__')" class="h-8 px-3 rounded-xl border border-[var(--line)] bg-[var(--s1)] hover:bg-[var(--s3)] text-[var(--tx2)] hover:text-[var(--tx)] text-xs font-medium flex items-center gap-1 transition">
+          <i class="ph ph-arrow-left text-xs"></i>
+          <span>ดูทุกวิชา</span>
+        </button>
         <button onclick="toggleFavorite('${activeSub.id}')" class="h-8 w-8 rounded-xl border border-[var(--line)] bg-[var(--s1)] hover:bg-[var(--s3)] flex items-center justify-center ${isFav ? 'text-amber-400' : 'text-[var(--tx3)] hover:text-amber-400'} transition" title="ติดดาว">
           <i class="ph ${isFav ? 'ph-star-fill' : 'ph-star'} text-sm"></i>
         </button>
-        <button onclick="openAddLinkModal('${activeSub.id}')" class="admin-only h-8 px-3 rounded-xl bg-[var(--s3)] hover:bg-[var(--s4)] border border-[var(--accent-32)] text-[var(--accent)] text-xs font-semibold flex items-center gap-1.5 transition">
-          <i class="ph ph-link-simple text-xs"></i>
-          <span>+ เพิ่มเรื่อง / HTML</span>
-        </button>
-        <button onclick="openAddSlideModal('${activeSub.id}')" class="admin-only h-8 px-3 rounded-xl bg-[var(--s3)] hover:bg-[var(--s4)] border border-[var(--accent-32)] text-pink-400 text-xs font-semibold flex items-center gap-1.5 transition">
-          <i class="ph ph-presentation-chart text-xs"></i>
-          <span>+ เพิ่มสไลด์</span>
-        </button>
-        <button onclick="openSubject('${activeSub.id}')" class="sv-btn-primary h-8 px-3.5 rounded-xl text-xs flex items-center gap-1.5">
-          <span>เปิด Workspace</span>
-          <i class="ph ph-arrow-right text-xs"></i>
+        <button onclick="openTopicModal('${activeSub.id}')" class="admin-only sv-btn-primary h-8 px-3.5 rounded-xl text-xs flex items-center gap-1.5 transition">
+          <i class="ph ph-plus-circle text-sm"></i>
+          <span>+ เพิ่มเรื่องใหม่ในวิชานี้</span>
         </button>
         <button onclick="deleteSubject('${activeSub.id}')" class="admin-only h-8 px-2.5 rounded-xl border border-[var(--line)] bg-[var(--danger-bg)] text-[var(--danger)] hover:opacity-85 text-xs font-medium flex items-center gap-1 transition" title="ลบวิชานี้">
           <i class="ph ph-trash text-xs"></i>
@@ -927,67 +1025,114 @@ document.addEventListener("DOMContentLoaded", () => {
     triggerAutoSyncIfEnabled();
   }
 
-  window.deleteHomeTopic = function(subjectId, linkId, slideId) {
-    if (linkId && !slideId) {
-      deleteSubjectAsset("link", linkId, subjectId, true);
-      return;
-    }
-    if (!linkId && slideId) {
-      deleteSubjectAsset("slide", slideId, subjectId, true);
-      return;
-    }
-    const sub = allSubjects.find(s => s.id === subjectId);
-    if (!sub) return;
-    const link = sub.links.find(l => l.id === linkId);
-    const title = link?.title || "เรื่องนี้";
+  function extractRemovedTopicState(subId, topicId) {
+    const sub = allSubjects.find(s => s.id === subId);
+    const topic = (sub?.topics || []).find(t => t.id === topicId);
+    if (!topic) return null;
 
-    const restores = [];
-    if (linkId) restores.push(extractRemovedRecord("link", subjectId, linkId));
-    if (slideId) restores.push(extractRemovedRecord("slide", subjectId, slideId));
-    if (restores.length === 0) return;
+    const customList = customTopicsMap[subId] || [];
+    const customIdx = customList.findIndex(t => t.id === topicId);
+    let removedNative = null;
+    const restoredLegacyFns = [];
+
+    if (customIdx !== -1) {
+      removedNative = customList[customIdx];
+      customTopicsMap[subId] = customList.filter(t => t.id !== topicId);
+    } else if (topic.isLegacy) {
+      if (topic._legacyLinkId) restoredLegacyFns.push(extractRemovedRecord("link", subId, topic._legacyLinkId));
+      (topic._legacySlideIds || []).forEach(sid => restoredLegacyFns.push(extractRemovedRecord("slide", subId, sid)));
+    } else {
+      deletedTopicIds.add(topicId);
+    }
+
+    return {
+      title: topic.title,
+      restore: () => {
+        if (removedNative) {
+          if (!customTopicsMap[subId]) customTopicsMap[subId] = [];
+          customTopicsMap[subId].unshift(removedNative);
+        } else if (topic.isLegacy) {
+          restoredLegacyFns.forEach(fn => fn());
+        } else {
+          deletedTopicIds.delete(topicId);
+        }
+      }
+    };
+  }
+
+  window.deleteTopic = function(subjectId, topicId, exitToSubject = false) {
+    const removed = extractRemovedTopicState(subjectId, topicId);
+    if (!removed) return;
 
     saveState();
     allSubjects = getMergedSubjects();
     updateStats();
-    if (!viewHome.classList.contains("hidden")) renderSubjectsGrid();
 
-    showToast(`ลบเรื่อง "${title}" (สรุป + สไลด์) แล้ว`, () => {
-      restores.forEach(fn => fn());
+    if (exitToSubject && activeSubjectId === subjectId) {
+      activeTopicId = null;
+      navigateHome(true);
+    } else if (!viewHome.classList.contains("hidden")) {
+      renderSubjectsGrid();
+    } else if (activeSubjectId === subjectId) {
+      openSubject(subjectId, false);
+    }
+
+    showToast(`ลบเรื่อง "${removed.title}" แล้ว`, () => {
+      removed.restore();
       saveState();
       allSubjects = getMergedSubjects();
       updateStats();
-      if (activeSubjectId === subjectId && viewHome.classList.contains("hidden")) {
-        openSubject(subjectId, false);
-      } else if (!viewHome.classList.contains("hidden")) {
-        renderSubjectsGrid();
-      }
+      if (!viewHome.classList.contains("hidden")) renderSubjectsGrid();
+      else if (activeSubjectId === subjectId) openSubject(subjectId, false, { topicId });
       triggerAutoSyncIfEnabled();
     });
     triggerAutoSyncIfEnabled();
   };
 
-  window.unpairTopicCard = function(subjectId, linkId, slideId) {
-    const sub = allSubjects.find(s => s.id === subjectId);
-    if (!sub || !linkId || !slideId) return;
-    const link = sub.links.find(l => l.id === linkId);
-    if (!link) return;
-    const prevPaired = link.pairedSlideId || "";
-    const prevUnpairedLink = Boolean(link.unpairedAuto);
+  window.deleteActiveTopic = function() {
+    if (activeSubjectId && activeTopicId) deleteTopic(activeSubjectId, activeTopicId, true);
+  };
 
-    patchRecordFields("link", subjectId, linkId, { pairedSlideId: "", unpairedAuto: true });
-    patchRecordFields("slide", subjectId, slideId, { unpairedAuto: true });
+  window.deleteHomeTopic = function(subjectId, topicId) {
+    deleteTopic(subjectId, topicId, false);
+  };
+
+  window.applyTopicPair = function(subjectId, linkId, slideId) {
+    const sub = allSubjects.find(s => s.id === subjectId);
+    if (!sub) return;
+    const linkTopic = (sub.topics || []).find(t => t.link?.id === linkId);
+    const slideTopic = (sub.topics || []).find(t => (t.slides || []).some(sl => sl.id === slideId));
+    if (!linkTopic || !slideTopic || linkTopic.id === slideTopic.id) return;
+
+    const promotedTarget = promoteTopicToCustom(subjectId, linkTopic.id);
+    const targetSlide = (slideTopic.slides || []).find(sl => sl.id === slideId);
+    if (!promotedTarget || !targetSlide) return;
+
+    if (!Array.isArray(promotedTarget.slides)) promotedTarget.slides = [];
+    promotedTarget.slides.push({ ...targetSlide });
+    promotedTarget.createdAt = Date.now();
+    promotedTarget.updatedAt = new Date().toISOString().split("T")[0];
+    if (promotedTarget.link) {
+      promotedTarget.link.pairedSlideId = targetSlide.id;
+      promotedTarget.link.unpairedAuto = false;
+    }
+
+    // Remove the old standalone slide-only topic
+    const remainingSlides = (slideTopic.slides || []).filter(sl => sl.id !== slideId);
+    if (remainingSlides.length === 0 && !slideTopic.link) {
+      extractRemovedTopicState(subjectId, slideTopic.id);
+    } else {
+      const promotedSrc = promoteTopicToCustom(subjectId, slideTopic.id);
+      if (promotedSrc) promotedSrc.slides = remainingSlides;
+    }
+
     saveState();
     allSubjects = getMergedSubjects();
-    renderSubjectsGrid();
-
-    showToast(`แยก "${link.title}" กับสไลด์ออกเป็น 2 การ์ดแล้ว`, () => {
-      patchRecordFields("link", subjectId, linkId, { pairedSlideId: prevPaired, unpairedAuto: prevUnpairedLink });
-      patchRecordFields("slide", subjectId, slideId, { unpairedAuto: false });
-      saveState();
-      allSubjects = getMergedSubjects();
-      renderSubjectsGrid();
-      triggerAutoSyncIfEnabled();
-    });
+    updateStats();
+    closePairTopicModal();
+    if (!viewHome.classList.contains("hidden")) renderSubjectsGrid();
+    else if (activeSubjectId === subjectId) openSubject(subjectId, true, { topicId: promotedTarget.id, slideId: targetSlide.id, openSlides: true });
+    showToast("รวมเข้าเป็นเรื่องเดียวกันแล้ว!");
     triggerAutoSyncIfEnabled();
   };
 
@@ -995,53 +1140,37 @@ document.addEventListener("DOMContentLoaded", () => {
     pairTopicModal?.classList.add("hidden");
   };
 
-  window.applyTopicPair = function(subjectId, linkId, slideId) {
-    patchRecordFields("link", subjectId, linkId, { pairedSlideId: slideId, unpairedAuto: false });
-    patchRecordFields("slide", subjectId, slideId, { unpairedAuto: false });
-    saveState();
-    allSubjects = getMergedSubjects();
-    updateStats();
-    closePairTopicModal();
-    if (!viewHome.classList.contains("hidden")) renderSubjectsGrid();
-    else if (activeSubjectId === subjectId) openSubject(subjectId, true, { linkId, slideId, openSlides: true });
-    showToast("รวมสรุปกับสไลด์เข้าเป็นเรื่องเดียวแล้ว!");
-    triggerAutoSyncIfEnabled();
-  };
-
-  window.openPairTopicModal = function(sourceKind, subjectId, itemId) {
+  window.openPairTopicModal = function(sourceKind, subjectId, topicId) {
     const sub = allSubjects.find(s => s.id === subjectId);
-    if (!sub || !pairTopicModal) return;
+    const srcTopic = (sub?.topics || []).find(t => t.id === topicId);
+    if (!sub || !srcTopic || !pairTopicModal) return;
+
     const isSourceLink = sourceKind === "link";
-    const sourceItem = (isSourceLink ? sub.links : sub.slides).find(x => x.id === itemId);
-    if (!sourceItem) return;
-
-    document.getElementById("pair-source-badge").textContent = isSourceLink ? `${sub.code} • เรื่องสรุป` : `${sub.code} • สไลด์เรียน`;
-    document.getElementById("pair-source-title").textContent = sourceItem.title;
+    const sourceTitle = isSourceLink ? srcTopic.title : (srcTopic.slides?.[0]?.title || srcTopic.title);
+    document.getElementById("pair-source-badge").textContent = `${sub.code} • ${srcTopic.title}`;
+    document.getElementById("pair-source-title").textContent = sourceTitle;
     document.getElementById("pair-list-heading").textContent = isSourceLink
-      ? "เลือกสไลด์ที่มีในวิชานี้เพื่อรวมเป็นเรื่องเดียวกัน:"
-      : "เลือกเรื่องสรุปที่มีในวิชานี้เพื่อรวมเป็นเรื่องเดียวกัน:";
+      ? "เลือกสไลด์ที่มีในวิชานี้เพื่อรวมเข้ามาอยู่ในเรื่องนี้:"
+      : "เลือกเรื่องที่ต้องการนำสไลด์นี้ไปรวมเข้าด้วยกัน:";
 
-    const candidates = isSourceLink ? sub.slides : sub.links;
+    const candidateTopics = (sub.topics || []).filter(t => t.id !== topicId && (isSourceLink ? (t.slides || []).length > 0 : Boolean(t.link)));
     const listEl = document.getElementById("pair-existing-list");
-    if (candidates.length === 0) {
-      listEl.innerHTML = `<div class="p-3 rounded-xl bg-[var(--rail)] border border-[var(--line)] text-[11px] text-[var(--tx3)] text-center">${isSourceLink ? "ยังไม่มีสไลด์อื่นในวิชานี้ กดปุ่มด้านล่างเพื่ออัปโหลด PDF คู่กันได้เลย" : "ยังไม่มีเรื่องสรุปในวิชานี้ กดปุ่มด้านล่างเพื่อสร้างสรุปคู่กันได้เลย"}</div>`;
+    if (candidateTopics.length === 0) {
+      listEl.innerHTML = `<div class="p-3 rounded-xl bg-[var(--rail)] border border-[var(--line)] text-[11px] text-[var(--tx3)] text-center">ยังไม่มีรายการอื่นให้รวม กดปุ่มด้านล่างเพื่อเพิ่มไฟล์เข้าเรื่องนี้โดยตรงได้เลย</div>`;
     } else {
-      listEl.innerHTML = candidates.map(cand => {
-        const linkId = isSourceLink ? itemId : cand.id;
-        const slideId = isSourceLink ? cand.id : itemId;
-        const iconCls = isSourceLink
-          ? (cand.type === "pdf" ? "ph-file-pdf text-rose-400" : "ph-presentation-chart text-pink-400")
-          : "ph-code text-emerald-400";
+      listEl.innerHTML = candidateTopics.map(cand => {
+        const linkId = isSourceLink ? srcTopic.link.id : cand.link.id;
+        const slideId = isSourceLink ? cand.slides[0].id : srcTopic.slides[0].id;
         return `
           <button type="button" onclick="applyTopicPair('${subjectId}', '${linkId}', '${slideId}')" class="w-full p-2.5 rounded-xl bg-[var(--s1)] hover:bg-[var(--s3)] border border-[var(--line)] hover:border-[var(--accent-32)] flex items-center justify-between gap-2 text-left transition">
             <div class="flex items-center gap-2.5 min-w-0">
-              <i class="ph ${iconCls} text-base flex-shrink-0"></i>
+              <i class="ph ${isSourceLink ? 'ph-file-pdf text-rose-400' : 'ph-code text-emerald-400'} text-base flex-shrink-0"></i>
               <div class="min-w-0">
-                <p class="font-semibold text-xs text-[var(--tx)] truncate">${cand.title}</p>
+                <p class="font-semibold text-xs text-[var(--tx)] truncate">${isSourceLink ? cand.slides[0].title : cand.title}</p>
                 <p class="text-[10px] text-[var(--tx3)]">${cand.updatedAt || ""}</p>
               </div>
             </div>
-            <span class="px-2 py-1 rounded-md bg-[var(--accent-08)] text-[var(--accent)] text-[10px] font-semibold flex-shrink-0">รวมเป็นเรื่องเดียว</span>
+            <span class="px-2 py-1 rounded-md bg-[var(--accent-08)] text-[var(--accent)] text-[10px] font-semibold flex-shrink-0">รวมเข้าเรื่องเดียวกัน</span>
           </button>
         `;
       }).join("");
@@ -1050,8 +1179,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const uploadBtn = document.getElementById("pair-upload-new-btn");
     uploadBtn.onclick = () => {
       closePairTopicModal();
-      if (isSourceLink) openAddSlideModal(subjectId, itemId);
-      else openAddLinkModal(subjectId, itemId);
+      openTopicModal(subjectId, topicId, isSourceLink ? "slide" : "link");
     };
 
     pairTopicModal.classList.remove("hidden");
@@ -1105,14 +1233,13 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function buildFeedItemCardHtml(entry, idx) {
-    const { sub, link, slide, linkPreviewSrc, slidePreviewSrc, isNewest } = entry;
+    const { sub, topic, link, slide, slides, linkPreviewSrc, slidePreviewSrc, isNewest } = entry;
     const isPaired = Boolean(link && slide);
     const isSlideOnly = Boolean(!link && slide);
-    const mainTitle = link ? link.title : slide.title;
+    const mainTitle = topic.title || (link ? link.title : slide.title);
+    const slidesCount = slides ? slides.length : (slide ? 1 : 0);
 
-    const clickAction = link
-      ? `openSubjectTopic('${sub.id}', '${link.id}', ${slide ? `'${slide.id}'` : 'null'})`
-      : `openSubjectSlide('${sub.id}', '${slide.id}')`;
+    const clickAction = `openTopicStudio('${sub.id}', '${topic.id}')`;
 
     const linkBadge = link && (link.idbKey || (link.url && link.url.startsWith("shared-assets/")))
       ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1"><i class="ph ph-code"></i><span>HTML ในตัว</span></span>`
@@ -1122,7 +1249,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const slideBadge = slide
       ? (slide.type === "pdf"
-        ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center gap-1"><i class="ph ph-file-pdf"></i><span>สไลด์ PDF</span></span>`
+        ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center gap-1"><i class="ph ph-file-pdf"></i><span>สไลด์${slidesCount > 1 ? ` (${slidesCount})` : ''}</span></span>`
         : slide.type === "images"
           ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-sky-500/15 text-sky-400 border border-sky-500/30 flex items-center gap-1"><i class="ph ph-images"></i><span>รูปสไลด์</span></span>`
           : `<span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-pink-500/15 text-pink-400 border border-pink-500/30 flex items-center gap-1"><i class="ph ph-presentation-chart"></i><span>สไลด์เว็บ</span></span>`)
@@ -1133,34 +1260,36 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="grid grid-cols-2 divide-x divide-[var(--line)] w-full h-full">
           <div class="preview-scale-host relative w-full h-full overflow-hidden bg-[var(--bg)]">
             ${renderPreviewPaneHtml(sub, "link", link, linkPreviewSrc, true)}
-            <span class="absolute bottom-1.5 left-1.5 z-10 px-1.5 py-0.5 rounded bg-black/70 text-[9px] font-semibold text-emerald-300 border border-white/10 backdrop-blur-sm">สรุป</span>
+            <span class="absolute bottom-1.5 left-1.5 z-10 px-1.5 py-0.5 rounded bg-black/70 text-[9px] font-semibold text-emerald-300 border border-white/10 backdrop-blur-sm">เว็บสรุป</span>
           </div>
           <div class="relative w-full h-full overflow-hidden bg-[var(--bg)]">
             ${renderPreviewPaneHtml(sub, "slide", slide, slidePreviewSrc, true)}
-            <span class="absolute bottom-1.5 right-1.5 z-10 px-1.5 py-0.5 rounded bg-black/70 text-[9px] font-semibold text-rose-300 border border-white/10 backdrop-blur-sm">สไลด์</span>
+            <span class="absolute bottom-1.5 right-1.5 z-10 px-1.5 py-0.5 rounded bg-black/70 text-[9px] font-semibold text-rose-300 border border-white/10 backdrop-blur-sm">สไลด์${slidesCount > 1 ? ` (${slidesCount})` : ''}</span>
           </div>
         </div>
       `
       : renderPreviewPaneHtml(sub, isSlideOnly ? "slide" : "link", isSlideOnly ? slide : link, isSlideOnly ? slidePreviewSrc : linkPreviewSrc, false);
 
     const barUrl = isPaired
-      ? `${sub.code} • สรุป + สไลด์คู่กัน`
+      ? `${sub.code} • สรุป + สไลด์ (${slidesCount})`
       : isSlideOnly
-        ? `${sub.code} • SLIDES`
+        ? `${sub.code} • สไลด์ PDF`
         : (link.idbKey ? "interactive-html://in-app" : (link.url || "").replace(/^https?:\/\//, "").slice(0, 36));
     const showNewTag = isNewest || idx === 0;
-    const hoverLabel = isPaired ? "เปิดอ่านสรุป + สไลด์คู่กัน" : (isSlideOnly ? "เปิดอ่านสไลด์นี้" : "เปิดอ่านเรื่องนี้");
-    const ctaLabel = isPaired ? "อ่านสรุป + สไลด์คู่กัน" : (isSlideOnly ? "อ่านและจดโน้ต" : "เปิดอ่านเลย");
+    const hoverLabel = isPaired ? "เปิดอ่านเรื่องนี้ (เว็บสรุป + สไลด์)" : "เปิดเข้าเรื่องนี้";
+    const ctaLabel = isPaired ? "เข้าเรื่องนี้ (สรุป + สไลด์)" : "เข้าเรื่องนี้";
 
     const subtitleLine = isPaired
-      ? `${sub.title} • คู่กับสไลด์: ${slide.title}`
-      : `${sub.title}${link?.subtitle ? ` • ${link.subtitle}` : ""}`;
+      ? `${sub.title} • ${slidesCount} สไลด์ (${slide.title})`
+      : `${sub.title}${topic.subtitle ? ` • ${topic.subtitle}` : (link?.subtitle ? ` • ${link.subtitle}` : "")}`;
 
-    const pairActionBtn = isPaired
-      ? `<button onclick="event.stopPropagation(); unpairTopicCard('${sub.id}', '${link.id}', '${slide.id}')" class="admin-only h-7 px-2 rounded-lg flex items-center gap-1 text-[10px] font-medium text-[var(--tx2)] bg-[var(--s2)] hover:bg-[var(--s3)] border border-[var(--line)] transition" title="แยกสรุปกับสไลด์ออกเป็น 2 การ์ด"><i class="ph ph-link-break text-xs"></i><span>แยกการ์ด</span></button>`
-      : `<button onclick="event.stopPropagation(); openPairTopicModal('${isSlideOnly ? 'slide' : 'link'}', '${sub.id}', '${isSlideOnly ? slide.id : link.id}')" class="admin-only h-7 px-2 rounded-lg flex items-center gap-1 text-[10px] font-semibold text-[var(--accent)] bg-[var(--accent-08)] hover:bg-[var(--accent-14)] border border-[var(--accent-32)] transition" title="รวมกับ${isSlideOnly ? 'สรุป' : 'สไลด์'}เป็นเรื่องเดียว"><i class="ph ph-git-merge text-xs"></i><span>+ จับคู่${isSlideOnly ? 'สรุป' : 'สไลด์'}</span></button>`;
+    const otherMergeExists = isSlideOnly
+      ? (sub.topics || []).some(t => t.id !== topic.id && Boolean(t.link))
+      : (!slide && (sub.topics || []).some(t => t.id !== topic.id && !t.link && (t.slides || []).length > 0));
 
-    const delArgs = `'${sub.id}', ${link ? `'${link.id}'` : 'null'}, ${slide ? `'${slide.id}'` : 'null'}`;
+    const quickFillBtn = otherMergeExists
+      ? `<button onclick="event.stopPropagation(); openPairTopicModal('${isSlideOnly ? 'slide' : 'link'}', '${sub.id}', '${topic.id}')" class="admin-only h-7 px-2 rounded-lg flex items-center gap-1 text-[10px] font-semibold text-[var(--accent)] bg-[var(--accent-08)] hover:bg-[var(--accent-14)] border border-[var(--accent-32)] transition" title="รวมรายการในวิชานี้เข้าเรื่องเดียวกัน"><i class="ph ph-git-merge text-xs"></i><span>รวมกับ${isSlideOnly ? 'สรุป' : 'สไลด์'}ที่มี</span></button>`
+      : `<button onclick="event.stopPropagation(); openTopicModal('${sub.id}', '${topic.id}', '${!slide ? 'slide' : 'link'}')" class="admin-only h-7 px-2 rounded-lg flex items-center gap-1 text-[10px] font-medium text-[var(--tx2)] bg-[var(--s2)] hover:bg-[var(--s3)] border border-[var(--line)] transition" title="แก้ไขเรื่อง / เพิ่มสไลด์ / แก้เว็บสรุป"><i class="ph ph-pencil-simple text-xs"></i><span>${!slide ? '+ เพิ่มสไลด์' : (isSlideOnly ? '+ ใส่สรุป' : 'แก้เรื่อง')}</span></button>`;
 
     return `
       <article onclick="${clickAction}" class="group cursor-pointer sv-surface rounded-3xl overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-[var(--accent-32)] flex flex-col justify-between">
@@ -1174,7 +1303,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <div class="flex-1 mx-2 px-2.5 py-0.5 rounded-md bg-[var(--rail)] border border-[var(--line)] text-[10px] text-[var(--tx3)] truncate text-center tnum">
               ${barUrl}
             </div>
-            ${showNewTag ? `<span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">NEW</span>` : `<span class="text-[10px] text-[var(--tx3)] tnum">${(link || slide).updatedAt || ""}</span>`}
+            ${showNewTag ? `<span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">NEW</span>` : `<span class="text-[10px] text-[var(--tx3)] tnum">${topic.updatedAt || ""}</span>`}
           </div>
 
           <div class="card-preview-box ${isPaired ? '' : 'preview-scale-host'} relative w-full aspect-[16/10] overflow-hidden bg-[var(--bg)]">
@@ -1198,8 +1327,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 ${isPaired ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-gradient-to-r from-indigo-500/20 to-pink-500/20 text-purple-300 border border-purple-400/30 flex items-center gap-1"><i class="ph ph-split-horizontal"></i><span>สรุป + สไลด์</span></span>` : `${linkBadge}${slideBadge}`}
               </div>
               <div class="flex items-center gap-1">
-                ${pairActionBtn}
-                <button onclick="event.stopPropagation(); deleteHomeTopic(${delArgs})" class="admin-only w-7 h-7 rounded-lg flex items-center justify-center text-[var(--danger)] bg-[var(--danger-bg)] hover:opacity-80 transition" title="ลบรายการนี้">
+                ${quickFillBtn}
+                <button onclick="event.stopPropagation(); deleteHomeTopic('${sub.id}', '${topic.id}')" class="admin-only w-7 h-7 rounded-lg flex items-center justify-center text-[var(--danger)] bg-[var(--danger-bg)] hover:opacity-80 transition" title="ลบเรื่องนี้">
                   <i class="ph ph-trash text-xs"></i>
                 </button>
               </div>
@@ -1212,7 +1341,7 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
 
           <div class="pt-3 border-t border-[var(--line)] flex items-center justify-between gap-2 text-xs">
-            <span class="text-[11px] text-[var(--tx3)] tnum">${(link || slide).updatedAt || sub.lastUpdated || ""}</span>
+            <span class="text-[11px] text-[var(--tx3)] tnum">${topic.updatedAt || sub.lastUpdated || ""}</span>
             <span class="font-semibold text-[var(--accent)] flex items-center gap-1">
               <span>${ctaLabel}</span>
               <i class="ph ph-caret-right"></i>
@@ -1225,37 +1354,40 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function buildSubjectCardHtml(sub, previewSrc) {
     const isFav = favorites.has(sub.id);
+    const topics = sub.topics || [];
     const firstLink = sub.links[0];
     const primaryUrl = firstLink?.idbKey ? "embedded-html://summary" : (firstLink?.url || "");
 
-    const slidesQuickTray = sub.slides.length > 0 ? `
+    const topicsQuickTray = topics.length > 0 ? `
       <div class="pt-2.5 border-t border-[var(--line)] space-y-1.5" onclick="event.stopPropagation()">
         <div class="flex items-center justify-between text-[11px]">
           <span class="font-semibold text-[var(--tx2)] flex items-center gap-1">
-            <i class="ph ph-presentation-chart text-pink-400"></i>
-            <span>เลือกสไลด์อ่าน (${sub.slides.length})</span>
+            <i class="ph ph-book-bookmark text-[var(--accent)]"></i>
+            <span>เรื่องในวิชานี้ (${topics.length})</span>
           </span>
-          <button onclick="openAddSlideModalForSubject('${sub.id}')" class="admin-only text-[10px] font-medium text-[var(--tx3)] hover:text-[var(--accent)] transition">+ เพิ่ม</button>
+          <button onclick="openTopicModal('${sub.id}')" class="admin-only text-[10px] font-medium text-[var(--tx3)] hover:text-[var(--accent)] transition">+ เพิ่มเรื่อง</button>
         </div>
         <div class="flex flex-wrap gap-1.5">
-          ${sub.slides.slice(0, 4).map(sl => `
-            <button onclick="openSubjectSlide('${sub.id}', '${sl.id}')" class="max-w-full px-2.5 py-1 rounded-lg bg-[var(--rail)] hover:bg-[var(--s3)] border border-[var(--line-2)] hover:border-[var(--accent-32)] text-[11px] font-medium text-[var(--tx)] hover:text-[var(--accent)] flex items-center gap-1.5 transition truncate" title="เปิดสไลด์ ${sl.title}">
-              <i class="ph ${sl.type === 'pdf' ? 'ph-file-pdf text-rose-400' : sl.type === 'images' ? 'ph-images text-sky-400' : 'ph-presentation-chart text-amber-400'} text-xs flex-shrink-0"></i>
-              <span class="truncate max-w-[170px]">${sl.title}</span>
+          ${topics.slice(0, 4).map(t => {
+            const hasSlide = (t.slides || []).length > 0;
+            return `
+            <button onclick="openTopicStudio('${sub.id}', '${t.id}')" class="max-w-full px-2.5 py-1 rounded-lg bg-[var(--rail)] hover:bg-[var(--s3)] border border-[var(--line-2)] hover:border-[var(--accent-32)] text-[11px] font-medium text-[var(--tx)] hover:text-[var(--accent)] flex items-center gap-1.5 transition truncate" title="เข้าเรื่อง ${t.title}">
+              <i class="ph ${hasSlide && t.link ? 'ph-split-horizontal text-purple-400' : hasSlide ? 'ph-file-pdf text-rose-400' : 'ph-code text-emerald-400'} text-xs flex-shrink-0"></i>
+              <span class="truncate max-w-[170px]">${t.title}</span>
             </button>
-          `).join("")}
-          ${sub.slides.length > 4 ? `<button onclick="openSubjectSlide('${sub.id}')" class="px-2 py-1 rounded-lg bg-[var(--s3)] text-[10px] font-semibold text-[var(--accent)]">+${sub.slides.length - 4} สไลด์</button>` : ""}
+          `;}).join("")}
+          ${topics.length > 4 ? `<button onclick="selectHomeSubject('${sub.id}')" class="px-2 py-1 rounded-lg bg-[var(--s3)] text-[10px] font-semibold text-[var(--accent)]">+${topics.length - 4} เรื่อง</button>` : ""}
         </div>
       </div>
     ` : `
       <div class="admin-only pt-2.5 border-t border-[var(--line)] flex items-center justify-between gap-2" onclick="event.stopPropagation()">
         <span class="text-[11px] text-[var(--tx3)] flex items-center gap-1">
-          <i class="ph ph-presentation-chart"></i>
-          <span>ยังไม่มีสไลด์</span>
+          <i class="ph ph-book-bookmark"></i>
+          <span>ยังไม่มีเรื่องในวิชานี้</span>
         </span>
-        <button onclick="openAddSlideModalForSubject('${sub.id}')" class="px-2.5 py-1 rounded-lg bg-[var(--accent-08)] hover:bg-[var(--accent-14)] border border-[var(--accent-32)] text-[11px] font-medium text-[var(--accent)] flex items-center gap-1 transition">
+        <button onclick="openTopicModal('${sub.id}')" class="px-2.5 py-1 rounded-lg bg-[var(--accent-08)] hover:bg-[var(--accent-14)] border border-[var(--accent-32)] text-[11px] font-medium text-[var(--accent)] flex items-center gap-1 transition">
           <i class="ph ph-plus text-xs"></i>
-          <span>เพิ่มสไลด์</span>
+          <span>เพิ่มเรื่องแรก</span>
         </button>
       </div>
     `;
@@ -1273,7 +1405,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <span class="w-2.5 h-2.5 rounded-full bg-emerald-400/80"></span>
           </div>
           <div class="flex-1 mx-2 px-2.5 py-0.5 rounded-md bg-[var(--rail)] border border-[var(--line)] text-[10px] text-[var(--tx3)] truncate text-center tnum">
-            ${primaryUrl ? primaryUrl.replace(/^https?:\/\//, "").slice(0, 38) : `${sub.code} • ยังไม่มีลิงก์`}
+            ${primaryUrl ? primaryUrl.replace(/^https?:\/\//, "").slice(0, 38) : `${sub.code} • ${topics.length} เรื่อง`}
           </div>
           <span class="inline-flex items-center gap-1 text-[10px] font-semibold ${previewSrc ? 'text-emerald-500' : 'text-[var(--accent)]'}">
             <span class="w-1.5 h-1.5 rounded-full ${previewSrc ? 'bg-emerald-500' : 'bg-[var(--accent)]'}"></span>
@@ -1290,14 +1422,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 ${sub.icon || '📘'}
               </div>
               <span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[var(--s1)] border border-[var(--line)] text-[var(--accent)] mb-1.5 tnum">${sub.code}</span>
-              <p class="text-xs font-semibold text-[var(--tx)] line-clamp-1 max-w-[240px]">${firstLink ? firstLink.title : sub.title}</p>
+              <p class="text-xs font-semibold text-[var(--tx)] line-clamp-1 max-w-[240px]">${topics[0]?.title || sub.title}</p>
               <p class="text-[11px] text-[var(--tx3)] mt-1">คลิกเพื่อดูเรื่องต่างๆ ในวิชานี้</p>
             </div>
           `}
 
           <div class="absolute inset-0 bg-slate-900/55 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
             <span class="sv-btn-primary h-9 px-4 rounded-xl text-xs flex items-center gap-1.5 shadow-xl transform translate-y-2 group-hover:translate-y-0 transition-transform duration-200">
-              <span>ดูเรื่องต่างๆ ในวิชานี้</span>
+              <span>ดูเรื่องในวิชานี้ (${topics.length})</span>
               <i class="ph ph-arrow-right"></i>
             </span>
           </div>
@@ -1334,24 +1466,16 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
         </div>
 
-        ${slidesQuickTray}
+        ${topicsQuickTray}
 
         <div class="pt-3 border-t border-[var(--line)] flex items-center justify-between gap-2 tnum">
           <div class="flex items-center gap-3 text-[11px] text-[var(--tx2)]">
-            <span class="flex items-center gap-1"><i class="ph ph-link-simple text-[var(--accent)]"></i> ${sub.links.length} ลิงก์</span>
+            <span class="flex items-center gap-1"><i class="ph ph-book-open-text text-[var(--accent)]"></i> ${topics.length} เรื่อง</span>
             <span class="flex items-center gap-1"><i class="ph ph-presentation-chart text-pink-500"></i> ${sub.slides.length} สไลด์</span>
           </div>
-          <div class="flex items-center gap-2">
-            ${sub.slides.length > 0 ? `
-              <button onclick="event.stopPropagation(); openSubjectSlide('${sub.id}')" class="px-2.5 py-1 rounded-lg bg-[var(--s3)] hover:bg-[var(--s4)] border border-[var(--accent-32)] text-[11px] font-semibold text-[var(--accent)] flex items-center gap-1 transition">
-                <i class="ph ph-book-open-text text-xs"></i>
-                <span>อ่านสไลด์</span>
-              </button>
-            ` : ""}
-            <button onclick="event.stopPropagation(); openSubject('${sub.id}')" class="text-xs font-semibold text-[var(--tx2)] hover:text-[var(--accent)] flex items-center gap-0.5 transition-colors">
-              <span>Workspace</span><i class="ph ph-caret-right"></i>
-            </button>
-          </div>
+          <span class="text-xs font-semibold text-[var(--accent)] flex items-center gap-0.5">
+            <span>ดูเรื่องในวิชานี้</span><i class="ph ph-caret-right"></i>
+          </span>
         </div>
       </div>
     </article>
@@ -1463,20 +1587,19 @@ document.addEventListener("DOMContentLoaded", () => {
             ${selectedSub.icon || '📘'}
           </div>
           <p class="text-sm font-bold text-[var(--tx)]">${selectedSub.code} — ${selectedSub.title}</p>
-          <p class="text-xs text-[var(--tx3)] mt-1 mb-4">ยังไม่มีเรื่อง เว็บสรุป หรือสไลด์ในวิชานี้ (อัปใหม่จะขึ้นเป็นการ์ดพรีวิวตรงนี้ทันที)</p>
+          <p class="text-xs text-[var(--tx3)] mt-1 mb-4">ยังไม่มีเรื่องในวิชานี้ — กดเพิ่มเรื่องเพื่อใส่เว็บสรุปและสไลด์ PDF เข้าไว้ด้วยกันได้เลย</p>
           <div class="admin-only flex items-center justify-center gap-2 flex-wrap">
-            <button onclick="openAddLinkModal('${selectedSub.id}')" class="sv-btn-primary h-9 px-4 rounded-xl text-xs">+ เพิ่มเรื่อง / โค้ด HTML</button>
-            <button onclick="openAddSlideModal('${selectedSub.id}')" class="h-9 px-4 rounded-xl bg-[var(--s3)] border border-[var(--accent-32)] text-[var(--accent)] font-semibold text-xs">+ เพิ่มสไลด์ PDF</button>
+            <button onclick="openTopicModal('${selectedSub.id}')" class="sv-btn-primary h-9 px-4 rounded-xl text-xs">+ เพิ่มเรื่องใหม่ในวิชานี้</button>
           </div>
         </div>
       `);
     } else if (!selectedSub) {
-      const emptySubjects = scopeSubjects.filter(s => s.links.length === 0 && s.slides.length === 0 && (!q || s.title.toLowerCase().includes(q) || s.code.toLowerCase().includes(q)));
+      const emptySubjects = scopeSubjects.filter(s => (s.topics || []).length === 0 && (!q || s.title.toLowerCase().includes(q) || s.code.toLowerCase().includes(q)));
       if (emptySubjects.length > 0) {
         if (resolvedEntries.length > 0) {
           parts.push(`
             <div class="col-span-full pt-4 border-t border-[var(--line)] flex items-center justify-between">
-              <span class="text-xs font-semibold text-[var(--tx3)]">รายวิชาที่ยังไม่มีเรื่อง/สไลด์ (${emptySubjects.length} วิชา — กดเลือกเพื่อดูหรือเพิ่มข้อมูล)</span>
+              <span class="text-xs font-semibold text-[var(--tx3)]">รายวิชาที่ยังไม่มีเรื่อง (${emptySubjects.length} วิชา — กดเลือกเพื่อดูหรือเพิ่มข้อมูล)</span>
             </div>
           `);
         }
@@ -1521,7 +1644,7 @@ document.addEventListener("DOMContentLoaded", () => {
               <span class="text-[10px] font-bold text-[var(--accent)] tnum">${sub.code}</span>
               <span class="text-xs font-semibold text-[var(--tx)] truncate">${sub.title}</span>
             </div>
-            <span class="text-[10px] text-[var(--tx3)]">${sub.links.length} ลิงก์ • ${sub.slides.length} สไลด์</span>
+            <span class="text-[10px] text-[var(--tx3)]">${(sub.topics || []).length} เรื่อง • ${sub.slides.length} สไลด์</span>
           </div>
         </div>
         <button onclick="deleteSubject('${sub.id}')" class="px-2.5 py-1 rounded-lg bg-[var(--danger-bg)] text-[var(--danger)] hover:opacity-80 font-medium text-[11px] flex items-center gap-1 flex-shrink-0 transition">
@@ -1575,9 +1698,13 @@ document.addEventListener("DOMContentLoaded", () => {
     triggerAutoSyncIfEnabled();
   };
 
-  // 5. Level 2: Subject Workspace + Direct Topic & Slide Entry
-  window.openSubjectTopic = function(subjectId, linkId = null, slideId = null) {
-    openSubject(subjectId, true, { linkId, slideId, openSlides: Boolean(slideId) });
+  // 5. Level 3: Topic Studio (Inside a Specific Topic: Summary Web + Slides Together)
+  window.openTopicStudio = function(subjectId, topicId = null, options = {}) {
+    openSubject(subjectId, true, { ...options, topicId });
+  };
+
+  window.openSubjectTopic = function(subjectId, topicOrLinkId = null, slideId = null) {
+    openSubject(subjectId, true, { topicId: topicOrLinkId, linkId: topicOrLinkId, slideId });
   };
 
   window.openSubjectSlide = function(subjectId, slideId = null) {
@@ -1585,51 +1712,83 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   window.openAddSlideModalForSubject = function(subjectId) {
-    openAddSlideModal(subjectId);
+    openTopicModal(subjectId, null, "slide");
   };
+
+  function getActiveTopicRecord(sub, preferredTopicId = null) {
+    const topics = sub?.topics || [];
+    if (topics.length === 0) return null;
+    const byId = preferredTopicId ? topics.find(t => t.id === preferredTopicId) : null;
+    if (byId) return byId;
+    const byActive = activeTopicId ? topics.find(t => t.id === activeTopicId) : null;
+    return byActive || topics[0];
+  }
 
   window.openSubject = function(subjectId, updateHash = true, options = {}) {
     const sub = allSubjects.find(s => s.id === subjectId);
     if (!sub) return;
 
+    const topics = sub.topics || [];
+    let topic = null;
+    if (options.topicId) topic = topics.find(t => t.id === options.topicId) || null;
+    if (!topic && options.linkId) topic = topics.find(t => t.link?.id === options.linkId) || null;
+    if (!topic && options.slideId) topic = topics.find(t => (t.slides || []).some(sl => sl.id === options.slideId)) || null;
+    if (!topic) topic = getActiveTopicRecord(sub);
+
     activeSubjectId = subjectId;
-    if (options.openSlides) {
-      isSplitMode = true;
-      isSlideExpanded = Boolean(options.expandSlides);
+    selectedHomeSubjectId = subjectId;
+    activeTopicId = topic ? topic.id : null;
+
+    const topicSlides = topic ? (topic.slides || []) : [];
+    if (options.openSlides !== undefined) {
+      isSplitMode = Boolean(options.openSlides);
     } else {
-      isSlideExpanded = false;
+      isSplitMode = topicSlides.length > 0 || isAdminMode();
     }
-    if (updateHash) window.location.hash = `subject/${subjectId}`;
+    isSlideExpanded = Boolean(options.expandSlides);
+
+    if (updateHash) {
+      window.location.hash = activeTopicId ? `subject/${subjectId}/topic/${activeTopicId}` : `subject/${subjectId}`;
+    }
 
     wsIcon.className = `w-9 h-9 rounded-xl bg-gradient-to-br ${sub.accent || 'from-indigo-500 to-purple-500'} flex items-center justify-center text-white text-base shadow-sm flex-shrink-0`;
     wsIcon.innerHTML = sub.icon || "📘";
     wsCode.textContent = sub.code;
     wsCategory.textContent = sub.category || "ทั่วไป";
     wsTitle.textContent = sub.title;
-    wsDesc.textContent = sub.description || `คลังสรุปและสไลด์เรียนวิชา ${sub.title}`;
-    wsDeleteSubjectBtn.onclick = () => deleteSubject(subjectId);
+    if (wsTopicTitle) wsTopicTitle.textContent = topic ? topic.title : "ยังไม่มีเรื่องในวิชานี้";
+    wsDesc.textContent = topic?.subtitle || sub.description || `คลังสรุปและสไลด์เรียนวิชา ${sub.title}`;
+    if (wsDeleteSubjectBtn) wsDeleteSubjectBtn.onclick = () => deleteSubject(subjectId);
+
+    if (wsTopicSwitcher) {
+      wsTopicSwitcher.innerHTML = topics.length
+        ? topics.map((t, idx) => `<option value="${t.id}" ${t.id === activeTopicId ? "selected" : ""}>${String(idx + 1).padStart(2, "0")}. ${t.title}</option>`).join("")
+        : `<option value="">ยังไม่มีเรื่อง</option>`;
+      wsTopicSwitcher.classList.toggle("hidden", topics.length <= 1);
+      wsTopicSwitcher.onchange = e => { if (e.target.value) openTopicStudio(subjectId, e.target.value); };
+    }
 
     viewHome.classList.add("hidden");
     viewSubject.classList.remove("hidden");
 
     updateWorkspaceStar();
-    renderWorkspaceLinks(sub);
-    renderWorkspaceSlides(sub);
+    renderWorkspaceLinks(sub, topic);
+    renderWorkspaceSlides(sub, topic);
     applySplitModeLayout();
 
-    if (sub.links.length > 0) {
-      const requestedLink = options.linkId && sub.links.some(l => l.id === options.linkId) ? options.linkId : null;
-      const keepExisting = !requestedLink && sub.links.some(l => l.id === activeLinkId) ? activeLinkId : null;
-      selectLink(requestedLink || keepExisting || sub.links[0].id);
+    if (topic?.link) {
+      selectLink(topic.link.id);
     } else {
+      activeLinkId = null;
       showEmptyLinkStage();
     }
 
-    if (sub.slides.length > 0) {
-      const requestedSlide = options.slideId && sub.slides.some(sl => sl.id === options.slideId) ? options.slideId : null;
-      const keepSlide = !requestedSlide && sub.slides.some(sl => sl.id === activeSlideId) ? activeSlideId : null;
-      selectSlide(requestedSlide || keepSlide || sub.slides[0].id, Boolean(options.openSlides));
+    if (topicSlides.length > 0) {
+      const requestedSlide = options.slideId && topicSlides.some(sl => sl.id === options.slideId) ? options.slideId : null;
+      const keepSlide = !requestedSlide && topicSlides.some(sl => sl.id === activeSlideId) ? activeSlideId : null;
+      selectSlide(requestedSlide || keepSlide || topicSlides[0].id, false);
     } else {
+      activeSlideId = null;
       renderSlideEmpty();
     }
 
@@ -1640,8 +1799,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  window.navigateHome = function(updateHash = true) {
+  window.navigateHome = function(updateHash = true, forceSubjectId = undefined) {
+    if (forceSubjectId !== undefined) selectedHomeSubjectId = forceSubjectId || "__ALL__";
     activeSubjectId = null;
+    activeTopicId = null;
     activeLinkId = null;
     activeSlideId = null;
     isSplitMode = false;
@@ -1669,32 +1830,34 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // 6. Workspace Links + Edit + Delete + Undo
-  function renderWorkspaceLinks(sub) {
-    wsLinksCount.textContent = String(sub.links.length).padStart(2, "0");
+  // 6. Topic Summary Links + Edit + Delete + Undo
+  function renderWorkspaceLinks(sub, topic = null) {
+    const activeTopic = topic || getActiveTopicRecord(sub);
+    const links = activeTopic?.link ? [activeTopic.link] : [];
+    wsLinksCount.textContent = String(links.length).padStart(2, "0");
 
-    splitLinkSelect.innerHTML = sub.links.length
-      ? sub.links.map((l, i) => `<option value="${l.id}" ${l.id === activeLinkId ? "selected" : ""}>${String(i + 1).padStart(2, "0")}. ${l.title}</option>`).join("")
-      : `<option value="">ยังไม่มีลิงก์</option>`;
-    splitLinkSelect.onchange = e => { if (e.target.value) selectLink(e.target.value, true); };
+    splitLinkSelect.innerHTML = (sub.topics || []).length
+      ? (sub.topics || []).map((t, i) => `<option value="${t.id}" ${t.id === activeTopicId ? "selected" : ""}>${String(i + 1).padStart(2, "0")}. ${t.title}</option>`).join("")
+      : `<option value="">ยังไม่มีเรื่อง</option>`;
+    splitLinkSelect.onchange = e => { if (e.target.value) openTopicStudio(sub.id, e.target.value); };
 
-    if (sub.links.length === 0) {
+    if (links.length === 0) {
       wsLinksList.innerHTML = `
         <div class="sv-rail p-4 rounded-xl text-center space-y-2">
-          <p class="text-xs text-[var(--tx3)]">ยังไม่มีลิงก์บทเรียน</p>
-          <button onclick="openAddLinkModal()" class="admin-only text-xs text-[var(--accent)] font-semibold hover:underline">+ เพิ่มลิงก์แรก</button>
+          <p class="text-xs text-[var(--tx3)]">เรื่องนี้ยังไม่มีเว็บสรุป</p>
+          <button onclick="editActiveTopic('link', true)" class="admin-only text-xs text-[var(--accent)] font-semibold hover:underline">+ เพิ่มโค้ด HTML / ลิงก์สรุป</button>
         </div>
       `;
       return;
     }
 
-    wsLinksList.innerHTML = sub.links.map((link, idx) => {
+    wsLinksList.innerHTML = links.map((link, idx) => {
       const isSelected = link.id === activeLinkId;
       const num = String(idx + 1).padStart(2, "0");
 
       return `
         <div 
-          onclick="selectLink('${link.id}', true)"
+          onclick="selectLink('${link.id}')"
           class="group cursor-pointer p-3 rounded-xl border transition-all duration-200 flex items-start gap-2.5 ${
             isSelected
               ? "bg-[var(--accent-08)] border-[var(--accent-32)] shadow-sm"
@@ -1711,7 +1874,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 ${link.badge || link.type || "Web"}
               </span>
               <div class="flex items-center gap-0.5">
-                <button onclick="event.stopPropagation(); openEditLinkModal('${link.id}')" class="admin-only text-[var(--tx3)] hover:text-[var(--accent)] p-1 rounded transition-colors" title="แก้ไข / วางโค้ด HTML">
+                <button onclick="event.stopPropagation(); editActiveTopic('link')" class="admin-only text-[var(--tx3)] hover:text-[var(--accent)] p-1 rounded transition-colors" title="แก้ไข / วางโค้ด HTML">
                   <i class="ph ph-pencil-simple text-xs"></i>
                 </button>
                 ${link.url ? `
@@ -1719,7 +1882,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <i class="ph ph-arrow-square-out text-xs"></i>
                   </a>
                 ` : ''}
-                <button onclick="event.stopPropagation(); deleteLink('${link.id}')" class="admin-only text-[var(--danger)] hover:opacity-80 p-1 rounded transition-opacity" title="ลบลิงก์นี้">
+                <button onclick="event.stopPropagation(); deleteLink('${link.id}')" class="admin-only text-[var(--danger)] hover:opacity-80 p-1 rounded transition-opacity" title="ลบเว็บสรุปออกจากเรื่องนี้">
                   <i class="ph ph-trash text-xs"></i>
                 </button>
               </div>
@@ -1734,7 +1897,31 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   window.deleteLink = function(linkId, overrideSubjectId = null, stayHome = false) {
-    deleteSubjectAsset("link", linkId, overrideSubjectId, stayHome);
+    const targetSubId = overrideSubjectId || activeSubjectId;
+    const sub = allSubjects.find(s => s.id === targetSubId);
+    const ownerTopic = (sub?.topics || []).find(t => t.link?.id === linkId);
+    if (!sub || !ownerTopic) return;
+    const promoted = promoteTopicToCustom(targetSubId, ownerTopic.id);
+    if (!promoted) return;
+    const removedLink = promoted.link;
+    promoted.link = null;
+
+    saveState();
+    allSubjects = getMergedSubjects();
+    updateStats();
+    if (!viewHome.classList.contains("hidden") || stayHome) renderSubjectsGrid();
+    else if (activeSubjectId === targetSubId) openSubject(targetSubId, false, { topicId: promoted.id });
+
+    showToast(`ลบเว็บสรุป "${removedLink?.title || ''}" ออกจากเรื่องนี้แล้ว`, () => {
+      promoted.link = removedLink;
+      saveState();
+      allSubjects = getMergedSubjects();
+      updateStats();
+      if (!viewHome.classList.contains("hidden")) renderSubjectsGrid();
+      else if (activeSubjectId === targetSubId) openSubject(targetSubId, false, { topicId: promoted.id });
+      triggerAutoSyncIfEnabled();
+    });
+    triggerAutoSyncIfEnabled();
   };
 
   function showEmptyLinkStage() {
@@ -1744,12 +1931,12 @@ document.addEventListener("DOMContentLoaded", () => {
     stageRestrictedView.classList.add("hidden");
     stageIframeWrapper.classList.add("hidden");
     stageEmptyView.classList.remove("hidden");
-    stageUrlText.textContent = "ไม่มีลิงก์";
+    stageUrlText.textContent = "ไม่มีเว็บสรุป";
     stageExternalBtn.classList.add("hidden");
   }
 
   // 7. Select Link + Smart Embedding
-  window.selectLink = async function(linkId, syncPairedSlide = false) {
+  window.selectLink = async function(linkId) {
     const sub = allSubjects.find(s => s.id === activeSubjectId);
     if (!sub) return;
     const link = sub.links.find(l => l.id === linkId);
@@ -1757,12 +1944,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     activeLinkId = linkId;
     renderWorkspaceLinks(sub);
-    if (syncPairedSlide && isSplitMode) {
-      const pairedSlide = findPairedSlideForLink(sub, linkId);
-      if (pairedSlide && pairedSlide.id !== activeSlideId) {
-        selectSlide(pairedSlide.id, false);
-      }
-    }
     stageEmptyView.classList.add("hidden");
     stageTimeoutBar.classList.add("hidden");
     stageExternalBtn.classList.remove("hidden");
@@ -1901,7 +2082,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function applySplitModeLayout() {
     const sub = allSubjects.find(s => s.id === activeSubjectId);
-    wsSlidesBadge.textContent = sub ? sub.slides.length : 0;
+    const activeTopic = sub ? getActiveTopicRecord(sub) : null;
+    wsSlidesBadge.textContent = activeTopic ? (activeTopic.slides || []).length : 0;
     const expandBtn = document.getElementById("slide-expand-btn");
 
     if (isSplitMode) {
@@ -2002,21 +2184,23 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================================
   // 9. GOODNOTES-STYLE PDF STUDIO READER + ANNOTATIONS + SLIDES
   // =========================================================================
-  function renderWorkspaceSlides(sub) {
-    wsSlidesCount.textContent = String(sub.slides.length).padStart(2, "0");
-    wsSlidesBadge.textContent = sub.slides.length;
+  function renderWorkspaceSlides(sub, topic = null) {
+    const activeTopic = topic || getActiveTopicRecord(sub);
+    const slides = activeTopic ? (activeTopic.slides || []) : (sub.slides || []);
+    wsSlidesCount.textContent = String(slides.length).padStart(2, "0");
+    wsSlidesBadge.textContent = slides.length;
 
-    slideDeckSelect.innerHTML = sub.slides.length
-      ? sub.slides.map(sl => `<option value="${sl.id}" ${sl.id === activeSlideId ? "selected" : ""}>${sl.title}</option>`).join("")
+    slideDeckSelect.innerHTML = slides.length
+      ? slides.map(sl => `<option value="${sl.id}" ${sl.id === activeSlideId ? "selected" : ""}>${sl.title}</option>`).join("")
       : `<option value="">ยังไม่มีสไลด์</option>`;
     slideDeckSelect.onchange = e => { if (e.target.value) selectSlide(e.target.value, false); };
 
-    if (sub.slides.length === 0) {
-      wsSlidesList.innerHTML = `<div class="sv-rail p-3 rounded-xl text-center"><p class="text-[11px] text-[var(--tx3)]">ยังไม่มีสไลด์เรียนในวิชานี้</p></div>`;
+    if (slides.length === 0) {
+      wsSlidesList.innerHTML = `<div class="sv-rail p-3 rounded-xl text-center"><p class="text-[11px] text-[var(--tx3)]">เรื่องนี้ยังไม่มีสไลด์</p></div>`;
       return;
     }
 
-    wsSlidesList.innerHTML = sub.slides.map(sl => {
+    wsSlidesList.innerHTML = slides.map(sl => {
       const isSelected = sl.id === activeSlideId && isSplitMode;
       const iconClass = sl.type === "pdf" ? "ph-file-pdf" : sl.type === "images" ? "ph-images" : "ph-presentation-chart";
       return `
@@ -2917,9 +3101,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!sl) return;
 
     activeSlideId = slideId;
+    const ownerTopic = getActiveTopicRecord(sub) || (sub.topics || []).find(t => (t.slides || []).some(x => x.id === slideId));
+    if (ownerTopic) activeTopicId = ownerTopic.id;
     if (openSplit && !isSplitMode) toggleSplitMode(true);
 
-    renderWorkspaceSlides(sub);
+    renderWorkspaceSlides(sub, ownerTopic);
     slideEmptyView.classList.add("hidden");
     slideDeleteBtn.classList.remove("hidden");
 
@@ -2983,6 +3169,34 @@ document.addEventListener("DOMContentLoaded", () => {
       slideDropZone.classList.remove("drop-active");
     });
   });
+  function attachDroppedSlideToActiveTopic(sl) {
+    const today = new Date().toISOString().split("T")[0];
+    let promoted = activeTopicId ? promoteTopicToCustom(activeSubjectId, activeTopicId) : null;
+    if (!promoted) {
+      const newTop = {
+        id: "top-" + Date.now(),
+        title: sl.title,
+        subtitle: "",
+        updatedAt: today,
+        createdAt: Date.now(),
+        link: null,
+        slides: [sl]
+      };
+      if (!customTopicsMap[activeSubjectId]) customTopicsMap[activeSubjectId] = [];
+      customTopicsMap[activeSubjectId].unshift(newTop);
+      promoted = newTop;
+    } else {
+      if (!Array.isArray(promoted.slides)) promoted.slides = [];
+      promoted.slides.push(sl);
+      promoted.updatedAt = today;
+      promoted.createdAt = Date.now();
+    }
+    saveState();
+    allSubjects = getMergedSubjects();
+    updateStats();
+    openSubject(activeSubjectId, false, { topicId: promoted.id, slideId: sl.id, openSlides: true });
+  }
+
   slideDropZone.addEventListener("drop", async e => {
     if (!activeSubjectId) return;
     if (!isAdminMode()) {
@@ -2999,27 +3213,15 @@ document.addEventListener("DOMContentLoaded", () => {
       const key = "pdf-" + Date.now();
       await StudyVaultDB.setBlob(key, pdf);
       const sl = { id: "sl-" + Date.now(), title: pdf.name.replace(/\.pdf$/i, ""), type: "pdf", idbKey: key, updatedAt: new Date().toISOString().split("T")[0] };
-      if (!customSlidesMap[activeSubjectId]) customSlidesMap[activeSubjectId] = [];
-      customSlidesMap[activeSubjectId].unshift(sl);
-      saveState();
-      allSubjects = getMergedSubjects();
-      updateStats();
-      openSubject(activeSubjectId, false);
-      selectSlide(sl.id, true);
-      showToast(`เพิ่มสไลด์ PDF "${sl.title}" สำเร็จ`);
+      attachDroppedSlideToActiveTopic(sl);
+      showToast(`เพิ่มสไลด์ PDF "${sl.title}" เข้าเรื่องนี้แล้ว`);
       triggerAutoSyncIfEnabled();
     } else if (imgs.length > 0) {
       const key = "imgs-" + Date.now();
       await StudyVaultDB.setBlob(key, imgs);
       const sl = { id: "sl-" + Date.now(), title: `สไลด์รูปภาพ (${imgs.length} หน้า)`, type: "images", idbKey: key, updatedAt: new Date().toISOString().split("T")[0] };
-      if (!customSlidesMap[activeSubjectId]) customSlidesMap[activeSubjectId] = [];
-      customSlidesMap[activeSubjectId].unshift(sl);
-      saveState();
-      allSubjects = getMergedSubjects();
-      updateStats();
-      openSubject(activeSubjectId, false);
-      selectSlide(sl.id, true);
-      showToast(`เพิ่มสไลด์รูปภาพ ${imgs.length} หน้าสำเร็จ`);
+      attachDroppedSlideToActiveTopic(sl);
+      showToast(`เพิ่มสไลด์รูปภาพ ${imgs.length} หน้าเข้าเรื่องนี้แล้ว`);
       triggerAutoSyncIfEnabled();
     }
   });
@@ -3027,7 +3229,32 @@ document.addEventListener("DOMContentLoaded", () => {
   window.deleteActiveSlide = () => { if (activeSlideId) deleteSlide(activeSlideId); };
 
   window.deleteSlide = function(slideId, overrideSubjectId = null, stayHome = false) {
-    deleteSubjectAsset("slide", slideId, overrideSubjectId, stayHome);
+    const targetSubId = overrideSubjectId || activeSubjectId;
+    const sub = allSubjects.find(s => s.id === targetSubId);
+    const ownerTopic = (sub?.topics || []).find(t => (t.slides || []).some(sl => sl.id === slideId));
+    if (!sub || !ownerTopic) return;
+    const targetSlide = (ownerTopic.slides || []).find(sl => sl.id === slideId);
+    const promoted = promoteTopicToCustom(targetSubId, ownerTopic.id);
+    if (!promoted || !targetSlide) return;
+
+    const prevSlides = [...(promoted.slides || [])];
+    promoted.slides = prevSlides.filter(sl => sl.id !== slideId);
+    saveState();
+    allSubjects = getMergedSubjects();
+    updateStats();
+    if (!viewHome.classList.contains("hidden") || stayHome) renderSubjectsGrid();
+    else if (activeSubjectId === targetSubId) openSubject(targetSubId, false, { topicId: promoted.id });
+
+    showToast(`ลบสไลด์ "${targetSlide.title}" ออกจากเรื่องนี้แล้ว`, () => {
+      promoted.slides = prevSlides;
+      saveState();
+      allSubjects = getMergedSubjects();
+      updateStats();
+      if (!viewHome.classList.contains("hidden")) renderSubjectsGrid();
+      else if (activeSubjectId === targetSubId) openSubject(targetSubId, false, { topicId: promoted.id, slideId });
+      triggerAutoSyncIfEnabled();
+    });
+    triggerAutoSyncIfEnabled();
   };
 
   // =========================================================================
@@ -3084,12 +3311,10 @@ document.addEventListener("DOMContentLoaded", () => {
     triggerAutoSyncIfEnabled();
   });
 
-  // Subject Lock + Inline Create Helpers for Upload Modals
-  const lnkSubjectSelect = document.getElementById("lnk-subject-select");
-  const slSubjectSelect = document.getElementById("sl-subject-select");
-  const lnkLockBtn = document.getElementById("lnk-lock-btn");
-  const slLockBtn = document.getElementById("sl-lock-btn");
-  const inlineSubState = { lnk: false, sl: false };
+  // Subject Lock + Inline Create Helpers for Unified Topic Modal
+  const topSubjectSelect = document.getElementById("top-subject-select");
+  const topLockBtn = document.getElementById("top-lock-btn");
+  const inlineSubState = { top: false };
 
   function setInlineBoxUI(prefix, showInline) {
     const selectEl = document.getElementById(`${prefix}-subject-select`);
@@ -3109,7 +3334,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  window.toggleInlineSubjectBox = function(prefix) {
+  window.toggleInlineSubjectBox = function(prefix = "top") {
     if (allSubjects.length === 0) return;
     setInlineBoxUI(prefix, !inlineSubState[prefix]);
   };
@@ -3134,85 +3359,32 @@ document.addEventListener("DOMContentLoaded", () => {
     return newSub.id;
   }
 
-  function populatePairDropdownsForSubject(subId, opts = {}) {
-    const sub = allSubjects.find(s => s.id === subId);
-    const lnkSlideSel = document.getElementById("lnk-pair-slide-select");
-    const slLinkSel = document.getElementById("sl-pair-link-select");
-
-    if (lnkSlideSel) {
-      const slides = sub?.slides || [];
-      lnkSlideSel.innerHTML = `<option value="">-- ไม่แนบสไลด์ --</option>` +
-        slides.map(sl => `<option value="${sl.id}">${sl.title}</option>`).join("");
-      if (opts.pairSlideId && slides.some(sl => sl.id === opts.pairSlideId)) {
-        lnkSlideSel.value = opts.pairSlideId;
-      }
-    }
-
-    if (slLinkSel) {
-      const links = sub?.links || [];
-      slLinkSel.innerHTML = `<option value="">-- ให้ระบบจับคู่อัตโนมัติ / แยกเป็นการ์ดสไลด์ --</option>` +
-        links.map(l => `<option value="${l.id}">${l.title}</option>`).join("");
-      if (opts.pairLinkId && links.some(l => l.id === opts.pairLinkId)) {
-        slLinkSel.value = opts.pairLinkId;
-      }
-    }
-  }
-
-  window.setLinkPairMode = function(mode) {
-    lnkPairMode = mode === "existing" || mode === "pdf" ? mode : "none";
-    ["none", "existing", "pdf"].forEach(m => {
-      const btn = document.getElementById("lnk-pair-" + m);
-      if (btn) {
-        btn.className = m === lnkPairMode
-          ? "px-2 py-0.5 rounded bg-[var(--accent)] text-white font-medium"
-          : "px-2 py-0.5 rounded text-[var(--tx3)]";
-      }
-    });
-    document.getElementById("lnk-pair-existing-group")?.classList.toggle("hidden", lnkPairMode !== "existing");
-    document.getElementById("lnk-pair-pdf-group")?.classList.toggle("hidden", lnkPairMode !== "pdf");
-  };
-
-  function syncSubjectSelects(preferredId = null, pairOpts = {}) {
+  function syncSubjectSelects(preferredId = null) {
     const targetId = (lockedSubjectId && allSubjects.some(s => s.id === lockedSubjectId))
       ? lockedSubjectId
       : (preferredId || activeSubjectId || allSubjects[0]?.id || "");
     const isLocked = Boolean(lockedSubjectId && allSubjects.some(s => s.id === lockedSubjectId));
 
     const optionsHtml = allSubjects.map(s => `<option value="${s.id}" ${s.id === targetId ? "selected" : ""}>${s.code} — ${s.title}</option>`).join("");
-    [lnkSubjectSelect, slSubjectSelect].forEach(sel => {
-      if (!sel) return;
-      sel.innerHTML = optionsHtml;
-      sel.value = targetId;
-      sel.disabled = isLocked;
-      sel.classList.toggle("opacity-75", isLocked);
-    });
-
-    [lnkLockBtn, slLockBtn].forEach(btn => {
-      if (!btn) return;
-      if (isLocked) {
-        btn.className = "px-2.5 py-0.5 rounded-md bg-[var(--accent)] text-white font-semibold text-[11px] flex items-center gap-1 transition";
-        btn.innerHTML = `<i class="ph ph-lock"></i><span>ล็อควิชาไว้แล้ว</span>`;
-      } else {
-        btn.className = "px-2.5 py-0.5 rounded-md border border-[var(--line-2)] bg-[var(--s1)] text-[var(--tx2)] text-[11px] flex items-center gap-1 transition";
-        btn.innerHTML = `<i class="ph ph-lock-open"></i><span>ล็อควิชานี้ไว้</span>`;
-      }
-    });
-
-    setInlineBoxUI("lnk", false);
-    setInlineBoxUI("sl", false);
-    populatePairDropdownsForSubject(targetId, pairOpts);
-  }
-
-  lnkSubjectSelect?.addEventListener("change", () => populatePairDropdownsForSubject(lnkSubjectSelect.value));
-  slSubjectSelect?.addEventListener("change", () => populatePairDropdownsForSubject(slSubjectSelect.value));
-
-  document.getElementById("lnk-pair-pdf-file")?.addEventListener("change", e => {
-    const f = e.target.files[0];
-    const titleEl = document.getElementById("lnk-pair-pdf-title");
-    if (f && titleEl && !titleEl.value) {
-      titleEl.value = f.name.replace(/\.pdf$/i, "");
+    if (topSubjectSelect) {
+      topSubjectSelect.innerHTML = optionsHtml;
+      topSubjectSelect.value = targetId;
+      topSubjectSelect.disabled = isLocked;
+      topSubjectSelect.classList.toggle("opacity-75", isLocked);
     }
-  });
+
+    if (topLockBtn) {
+      if (isLocked) {
+        topLockBtn.className = "px-2.5 py-0.5 rounded-md bg-[var(--accent)] text-white font-semibold text-[11px] flex items-center gap-1 transition";
+        topLockBtn.innerHTML = `<i class="ph ph-lock"></i><span>ล็อควิชาไว้แล้ว</span>`;
+      } else {
+        topLockBtn.className = "px-2.5 py-0.5 rounded-md border border-[var(--line-2)] bg-[var(--s1)] text-[var(--tx2)] text-[11px] flex items-center gap-1 transition";
+        topLockBtn.innerHTML = `<i class="ph ph-lock-open"></i><span>ล็อควิชานี้ไว้</span>`;
+      }
+    }
+
+    setInlineBoxUI("top", false);
+  }
 
   window.toggleSubjectLock = function() {
     if (lockedSubjectId) {
@@ -3220,7 +3392,7 @@ document.addEventListener("DOMContentLoaded", () => {
       localStorage.removeItem(LS_LOCKED_SUBJECT);
       showToast("ปลดล็อครายวิชาแล้ว สามารถเลือกเปลี่ยนวิชาได้");
     } else {
-      const currentVal = (!addLinkModal.classList.contains("hidden") ? lnkSubjectSelect?.value : slSubjectSelect?.value) || activeSubjectId || allSubjects[0]?.id || "";
+      const currentVal = topSubjectSelect?.value || activeSubjectId || allSubjects[0]?.id || "";
       if (!currentVal) return;
       lockedSubjectId = currentVal;
       localStorage.setItem(LS_LOCKED_SUBJECT, lockedSubjectId);
@@ -3230,19 +3402,6 @@ document.addEventListener("DOMContentLoaded", () => {
     syncSubjectSelects();
   };
 
-  window.setLnkSourceMode = function(mode) {
-    lnkSourceMode = mode;
-    document.getElementById("lnk-mode-url").className = mode === "url" ? "px-2.5 py-0.5 rounded bg-[var(--accent)] text-white text-[11px] font-medium" : "px-2.5 py-0.5 rounded text-[var(--tx3)] text-[11px]";
-    document.getElementById("lnk-mode-html").className = mode === "html" ? "px-2.5 py-0.5 rounded bg-[var(--accent)] text-white text-[11px] font-medium" : "px-2.5 py-0.5 rounded text-[var(--tx3)] text-[11px]";
-    document.getElementById("lnk-url-group").classList.toggle("hidden", mode !== "url");
-    document.getElementById("lnk-html-group").classList.toggle("hidden", mode !== "html");
-  };
-
-  document.getElementById("lnk-html-file").addEventListener("change", async e => {
-    const file = e.target.files[0];
-    if (file) document.getElementById("lnk-html-code").value = await file.text();
-  });
-
   function getPreferredTargetSubjectId(explicitId = null) {
     if (typeof explicitId === "string" && explicitId && explicitId !== "__ALL__") return explicitId;
     if (activeSubjectId) return activeSubjectId;
@@ -3250,230 +3409,294 @@ document.addEventListener("DOMContentLoaded", () => {
     return allSubjects[0]?.id || "";
   }
 
-  window.openQuickSlideUpload = () => {
-    openAddLinkModal();
-  };
+  let modalExistingLinkRecord = null;
+  let modalExistingSlidesList = [];
+  let modalRemovedSlideIds = new Set();
 
-  window.openAddLinkModal = (preferredId = null, pairSlideId = null) => {
-    document.getElementById("lnk-edit-id").value = "";
-    document.getElementById("lnk-modal-heading").textContent = "อัปโหลดลิงก์ / สไลด์เข้าวิชา";
-    document.getElementById("lnk-hub-tabs")?.classList.remove("hidden");
-    document.getElementById("lnk-pair-section")?.classList.remove("hidden");
-    document.getElementById("add-link-form").reset();
-    setLnkSourceMode("url");
-    setLinkPairMode(pairSlideId ? "existing" : "none");
-    syncSubjectSelects(getPreferredTargetSubjectId(preferredId), { pairSlideId });
-    addLinkModal.classList.remove("hidden");
-  };
-
-  window.openEditLinkModal = (linkId, preferHtml = false) => {
-    const sub = allSubjects.find(s => s.id === activeSubjectId);
-    const link = sub?.links.find(l => l.id === linkId);
-    if (!link) return;
-
-    document.getElementById("lnk-edit-id").value = link.id;
-    document.getElementById("lnk-modal-heading").textContent = preferHtml ? "วางโค้ด HTML เพื่อฝังเว็บเต็มๆ ข้างสไลด์" : "แก้ไขลิงก์บทเรียน";
-    document.getElementById("lnk-hub-tabs")?.classList.add("hidden");
-    const pairedSlide = findPairedSlideForLink(sub, link.id);
-    setLinkPairMode(pairedSlide ? "existing" : "none");
-    syncSubjectSelects(activeSubjectId, { pairSlideId: pairedSlide?.id || link.pairedSlideId || "" });
-    document.getElementById("lnk-inline-toggle-btn")?.classList.add("hidden");
-    if (lnkSubjectSelect) lnkSubjectSelect.disabled = true;
-    document.getElementById("lnk-title").value = link.title || "";
-    document.getElementById("lnk-subtitle").value = link.subtitle || "";
-    document.getElementById("lnk-url").value = link.url || "";
-    document.getElementById("lnk-html-code").value = "";
-    setLnkSourceMode(preferHtml || link.idbKey ? "html" : "url");
-    addLinkModal.classList.remove("hidden");
-  };
-
-  window.editActiveLink = (preferHtml = false) => {
-    if (activeLinkId) openEditLinkModal(activeLinkId, preferHtml);
-  };
-
-  document.getElementById("open-add-link-btn").addEventListener("click", () => openAddLinkModal());
-  window.closeAddLinkModal = () => addLinkModal.classList.add("hidden");
-
-  document.getElementById("add-link-form").addEventListener("submit", async e => {
-    e.preventDefault();
-    const editId = document.getElementById("lnk-edit-id").value;
-    const title = document.getElementById("lnk-title").value.trim();
-    const subtitle = document.getElementById("lnk-subtitle").value.trim();
-    const today = new Date().toISOString().split("T")[0];
-
-    let url = document.getElementById("lnk-url").value.trim();
-    const htmlCode = document.getElementById("lnk-html-code").value.trim();
-    if (lnkSourceMode === "html" && !htmlCode) {
-      showToast("กรุณาเลือกไฟล์ HTML หรือวางโค้ดก่อน");
-      return;
-    }
-    if (lnkSourceMode !== "html" && !url) {
-      showToast("กรุณากรอกลิงก์ URL");
-      return;
-    }
-
-    const pairPdfFile = lnkPairMode === "pdf" ? document.getElementById("lnk-pair-pdf-file")?.files[0] : null;
-    const pairPdfTitleInput = document.getElementById("lnk-pair-pdf-title")?.value.trim() || "";
-    const pairExistingSlideId = lnkPairMode === "existing" ? (document.getElementById("lnk-pair-slide-select")?.value || "") : "";
-    if (lnkPairMode === "pdf" && !pairPdfFile) {
-      showToast("กรุณาเลือกไฟล์ PDF ที่ต้องการแนบคู่กัน หรือเลือก 'ยังไม่แนบ'");
-      return;
-    }
-
-    const targetSubId = editId ? activeSubjectId : ensureTargetSubjectId("lnk", lnkSubjectSelect);
-    if (!targetSubId) return;
-
-    let idbKey = null;
-    if (lnkSourceMode === "html") {
-      idbKey = "html-" + Date.now();
-      await StudyVaultDB.setBlob(idbKey, new Blob([htmlCode], { type: "text/html" }));
-    }
-
-    let finalPairedSlideId = pairExistingSlideId || "";
-    if (pairPdfFile) {
-      const slId = "sl-" + (Date.now() + 1);
-      const slKey = "pdf-" + (Date.now() + 1);
-      await StudyVaultDB.setBlob(slKey, pairPdfFile);
-      const pairedSlideRec = {
-        id: slId,
-        title: pairPdfTitleInput || pairPdfFile.name.replace(/\.pdf$/i, "") || title,
-        type: "pdf",
-        idbKey: slKey,
-        updatedAt: today
-      };
-      if (!customSlidesMap[targetSubId]) customSlidesMap[targetSubId] = [];
-      customSlidesMap[targetSubId].unshift(pairedSlideRec);
-      finalPairedSlideId = slId;
-    }
-
-    if (editId) {
-      const patch = {
-        title, subtitle,
-        type: idbKey ? "Embedded HTML" : "Web App",
-        url: idbKey ? "" : url,
-        repoPath: "",
-        idbKey,
-        badge: idbKey ? "HTML ในตัว" : "Web App",
-        frameRestricted: !idbKey && isLikelyRestrictedUrl(url),
-        updatedAt: today,
-        pairedSlideId: lnkPairMode === "none" ? "" : finalPairedSlideId,
-        unpairedAuto: lnkPairMode === "none"
-      };
-
-      patchRecordFields("link", targetSubId, editId, patch);
-      if (finalPairedSlideId) patchRecordFields("slide", targetSubId, finalPairedSlideId, { unpairedAuto: false });
-
-      saveState();
-      allSubjects = getMergedSubjects();
-      updateStats();
-      closeAddLinkModal();
-      openSubject(targetSubId, false, finalPairedSlideId ? { linkId: editId, slideId: finalPairedSlideId, openSlides: true } : { linkId: editId });
-      showToast(idbKey ? "ฝังโค้ด HTML สำเร็จ! แสดงผลในกรอบเต็มๆ แล้ว" : "บันทึกการแก้ไขเรียบร้อย");
-      triggerAutoSyncIfEnabled();
-    } else {
-      const newLink = {
-        id: "lnk-" + Date.now(),
-        title, subtitle,
-        type: idbKey ? "Embedded HTML" : "Web App",
-        url: idbKey ? "" : url,
-        idbKey,
-        badge: idbKey ? "HTML ในตัว" : "ใหม่",
-        frameRestricted: !idbKey && isLikelyRestrictedUrl(url),
-        updatedAt: today
-      };
-      if (finalPairedSlideId) {
-        newLink.pairedSlideId = finalPairedSlideId;
-        newLink.unpairedAuto = false;
-        patchRecordFields("slide", targetSubId, finalPairedSlideId, { unpairedAuto: false });
+  window.setTopicLinkMode = function(mode) {
+    topicLinkMode = mode === "url" || mode === "none" ? mode : "html";
+    ["html", "url", "none"].forEach(m => {
+      const btn = document.getElementById("top-link-" + m);
+      if (btn) {
+        btn.className = m === topicLinkMode
+          ? "px-2.5 py-0.5 rounded bg-[var(--accent)] text-white font-medium"
+          : "px-2.5 py-0.5 rounded text-[var(--tx3)]";
       }
-      if (!customLinksMap[targetSubId]) customLinksMap[targetSubId] = [];
-      customLinksMap[targetSubId].unshift(newLink);
-      saveState();
-      allSubjects = getMergedSubjects();
-      updateStats();
-      closeAddLinkModal();
-      openSubjectTopic(targetSubId, newLink.id, finalPairedSlideId || null);
-      showToast(finalPairedSlideId ? `เพิ่มเรื่อง "${title}" พร้อมสไลด์คู่กันเรียบร้อย` : `เพิ่มลิงก์ "${title}" เข้าวิชาเรียบร้อย`);
-      triggerAutoSyncIfEnabled();
+    });
+    document.getElementById("top-link-html-group")?.classList.toggle("hidden", topicLinkMode !== "html");
+    document.getElementById("top-link-url-group")?.classList.toggle("hidden", topicLinkMode !== "url");
+  };
+
+  window.setTopicSlideMode = function(mode) {
+    topicSlideMode = mode === "images" || mode === "url" || mode === "none" ? mode : "pdf";
+    ["pdf", "images", "url", "none"].forEach(m => {
+      const btn = document.getElementById("top-sl-" + m);
+      if (btn) {
+        btn.className = m === topicSlideMode
+          ? "px-2 py-0.5 rounded bg-[var(--accent)] text-white font-medium"
+          : "px-2 py-0.5 rounded text-[var(--tx3)]";
+      }
+    });
+    document.getElementById("top-sl-title-row")?.classList.toggle("hidden", topicSlideMode === "none");
+    document.getElementById("top-sl-pdf-group")?.classList.toggle("hidden", topicSlideMode !== "pdf");
+    document.getElementById("top-sl-images-group")?.classList.toggle("hidden", topicSlideMode !== "images");
+    document.getElementById("top-sl-url-group")?.classList.toggle("hidden", topicSlideMode !== "url");
+  };
+
+  function renderModalExistingSlidesChips() {
+    const wrap = document.getElementById("top-existing-slides-wrap");
+    const listEl = document.getElementById("top-existing-slides-list");
+    if (!wrap || !listEl) return;
+    const kept = modalExistingSlidesList.filter(sl => !modalRemovedSlideIds.has(sl.id));
+    wrap.classList.toggle("hidden", kept.length === 0);
+    listEl.innerHTML = kept.map(sl => `
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--s1)] border border-[var(--line-2)] text-[11px] font-medium text-[var(--tx)]">
+        <i class="ph ${sl.type === 'pdf' ? 'ph-file-pdf text-rose-400' : sl.type === 'images' ? 'ph-images text-sky-400' : 'ph-presentation-chart text-pink-400'}"></i>
+        <span class="truncate max-w-[180px]">${sl.title}</span>
+        <button type="button" onclick="removeTopicModalSlide('${sl.id}')" class="text-[var(--danger)] hover:opacity-75 font-bold ml-0.5" title="นำสไลด์นี้ออก">×</button>
+      </span>
+    `).join("");
+  }
+
+  window.removeTopicModalSlide = function(slideId) {
+    modalRemovedSlideIds.add(slideId);
+    renderModalExistingSlidesChips();
+  };
+
+  document.getElementById("top-html-file")?.addEventListener("change", async e => {
+    const file = e.target.files[0];
+    if (file) {
+      document.getElementById("top-html-code").value = await file.text();
+      if (!document.getElementById("top-title").value.trim()) {
+        document.getElementById("top-title").value = file.name.replace(/\.html?$/i, "");
+      }
     }
   });
 
-  // Add Slide Modal
-  window.openAddSlideModal = (preferredId = null, pairToLinkId = null) => {
-    syncSubjectSelects(getPreferredTargetSubjectId(preferredId), { pairLinkId: pairToLinkId });
-    addSlideModal.classList.remove("hidden");
-  };
-  document.getElementById("open-add-slide-btn").addEventListener("click", () => openAddSlideModal());
-  window.closeAddSlideModal = () => addSlideModal.classList.add("hidden");
+  document.getElementById("top-pdf-file")?.addEventListener("change", e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const baseName = f.name.replace(/\.pdf$/i, "");
+    const topSlideTitleEl = document.getElementById("top-slide-title");
+    if (topSlideTitleEl && !topSlideTitleEl.value.trim()) topSlideTitleEl.value = baseName;
+    const topTitleEl = document.getElementById("top-title");
+    if (topTitleEl && !topTitleEl.value.trim()) topTitleEl.value = baseName;
+  });
 
-  window.setSlideTypeTab = function(mode) {
-    slideTypeMode = mode;
-    ["pdf", "images", "url"].forEach(m => {
-      document.getElementById("sl-tab-" + m).className = m === mode
-        ? "py-1.5 rounded-lg bg-[var(--accent)] text-white font-medium transition"
-        : "py-1.5 rounded-lg text-[var(--tx3)] font-medium transition";
-      document.getElementById("sl-panel-" + m).classList.toggle("hidden", m !== mode);
+  window.openTopicModal = function(preferredSubId = null, editTopicId = null, focusSection = null) {
+    if (!topicModal) return;
+    document.getElementById("topic-form").reset();
+    document.getElementById("top-edit-id").value = editTopicId || "";
+    modalExistingLinkRecord = null;
+    modalExistingSlidesList = [];
+    modalRemovedSlideIds = new Set();
+
+    const subId = getPreferredTargetSubjectId(preferredSubId);
+    syncSubjectSelects(subId);
+
+    const existingBadge = document.getElementById("top-existing-link-badge");
+    const sub = allSubjects.find(s => s.id === subId);
+    const editTopic = editTopicId && sub ? (sub.topics || []).find(t => t.id === editTopicId) : null;
+
+    if (editTopic) {
+      document.getElementById("top-modal-heading").textContent = `แก้ไขเรื่อง: ${editTopic.title}`;
+      document.getElementById("top-title").value = editTopic.title || "";
+      document.getElementById("top-subtitle").value = editTopic.subtitle || "";
+      if (topSubjectSelect) topSubjectSelect.disabled = true;
+      document.getElementById("top-inline-toggle-btn")?.classList.add("hidden");
+
+      modalExistingLinkRecord = editTopic.link ? { ...editTopic.link } : null;
+      modalExistingSlidesList = (editTopic.slides || []).map(sl => ({ ...sl }));
+
+      if (modalExistingLinkRecord) {
+        if (modalExistingLinkRecord.url && !modalExistingLinkRecord.idbKey) {
+          document.getElementById("top-url-input").value = modalExistingLinkRecord.url;
+          setTopicLinkMode(focusSection === "link" && !modalExistingLinkRecord.url ? "html" : "url");
+        } else {
+          setTopicLinkMode("html");
+          existingBadge?.classList.remove("hidden");
+        }
+      } else {
+        existingBadge?.classList.add("hidden");
+        setTopicLinkMode("html");
+      }
+
+      renderModalExistingSlidesChips();
+      setTopicSlideMode(focusSection === "slide" || modalExistingSlidesList.length === 0 ? "pdf" : "none");
+      document.getElementById("top-submit-btn").innerHTML = `<i class="ph ph-check-circle text-sm"></i><span>บันทึกการอัปเดตเรื่องนี้</span>`;
+    } else {
+      document.getElementById("top-modal-heading").textContent = "เพิ่มเรื่องใหม่ (เว็บสรุป + สไลด์ในเรื่องเดียว)";
+      existingBadge?.classList.add("hidden");
+      renderModalExistingSlidesChips();
+      setTopicLinkMode("html");
+      setTopicSlideMode("pdf");
+      document.getElementById("top-submit-btn").innerHTML = `<i class="ph ph-check-circle text-sm"></i><span>บันทึกเรื่องนี้และเปิดอ่าน (เว็บสรุป + สไลด์)</span>`;
+    }
+
+    topicModal.classList.remove("hidden");
+    requestAnimationFrame(() => {
+      if (focusSection === "slide") {
+        document.getElementById("top-slide-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      } else if (focusSection === "link") {
+        document.getElementById("top-link-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      } else if (!editTopic) {
+        document.getElementById("top-title")?.focus();
+      }
     });
   };
 
-  document.getElementById("sl-pdf-file").addEventListener("change", e => {
-    const f = e.target.files[0];
-    if (f && !document.getElementById("sl-title").value) {
-      document.getElementById("sl-title").value = f.name.replace(/\.pdf$/i, "");
-    }
-  });
+  window.closeTopicModal = function() {
+    topicModal?.classList.add("hidden");
+  };
 
-  document.getElementById("add-slide-form").addEventListener("submit", async e => {
+  window.editActiveTopic = function(focusSection = null) {
+    if (!activeSubjectId) return;
+    openTopicModal(activeSubjectId, activeTopicId, focusSection);
+  };
+
+  // Backwards-compatible aliases
+  window.openQuickSlideUpload = () => openTopicModal();
+  window.openAddLinkModal = (preferredId = null) => openTopicModal(preferredId, null, "link");
+  window.openAddSlideModal = (preferredId = null) => openTopicModal(preferredId, activeTopicId || null, "slide");
+
+  document.getElementById("topic-form")?.addEventListener("submit", async e => {
     e.preventDefault();
-    const title = document.getElementById("sl-title").value.trim();
-    const pairLinkId = document.getElementById("sl-pair-link-select")?.value || "";
-    const newSlide = { id: "sl-" + Date.now(), title, type: slideTypeMode, updatedAt: new Date().toISOString().split("T")[0] };
-
-    let blobKey = null;
-    let blobData = null;
-
-    if (slideTypeMode === "pdf") {
-      const file = document.getElementById("sl-pdf-file").files[0];
-      if (!file) { showToast("กรุณาเลือกไฟล์ PDF ก่อนบันทึก"); return; }
-      blobKey = "pdf-" + Date.now();
-      blobData = file;
-    } else if (slideTypeMode === "images") {
-      const files = Array.from(document.getElementById("sl-img-files").files);
-      if (files.length === 0) { showToast("กรุณาเลือกรูปภาพอย่างน้อย 1 รูป"); return; }
-      blobKey = "imgs-" + Date.now();
-      blobData = files;
-    } else {
-      const url = document.getElementById("sl-url-input").value.trim();
-      if (!url) { showToast("กรุณากรอกลิงก์สไลด์"); return; }
-      newSlide.url = url;
+    const editTopicId = document.getElementById("top-edit-id").value;
+    const title = document.getElementById("top-title").value.trim();
+    const subtitle = document.getElementById("top-subtitle").value.trim();
+    const today = new Date().toISOString().split("T")[0];
+    if (!title) {
+      showToast("กรุณากรอกชื่อเรื่อง");
+      document.getElementById("top-title")?.focus();
+      return;
     }
 
-    const targetSubId = ensureTargetSubjectId("sl", slSubjectSelect);
+    const targetSubId = editTopicId ? activeSubjectId : ensureTargetSubjectId("top", topSubjectSelect);
     if (!targetSubId) return;
 
-    if (blobKey && blobData) {
-      await StudyVaultDB.setBlob(blobKey, blobData);
-      newSlide.idbKey = blobKey;
+    // 1. Prepare Summary Link (optional)
+    let nextLink = null;
+    if (topicLinkMode === "html") {
+      const htmlCode = document.getElementById("top-html-code").value.trim();
+      if (htmlCode) {
+        const idbKey = "html-" + Date.now();
+        await StudyVaultDB.setBlob(idbKey, new Blob([htmlCode], { type: "text/html" }));
+        nextLink = {
+          id: modalExistingLinkRecord?.id || ("lnk-" + Date.now()),
+          title,
+          subtitle,
+          type: "Embedded HTML",
+          url: "",
+          repoPath: "",
+          idbKey,
+          badge: "HTML ในตัว",
+          frameRestricted: false,
+          updatedAt: today
+        };
+      } else if (modalExistingLinkRecord) {
+        nextLink = { ...modalExistingLinkRecord, title, subtitle, updatedAt: today };
+      }
+    } else if (topicLinkMode === "url") {
+      const urlVal = document.getElementById("top-url-input").value.trim();
+      if (urlVal) {
+        nextLink = {
+          id: modalExistingLinkRecord?.id || ("lnk-" + Date.now()),
+          title,
+          subtitle,
+          type: "Web App",
+          url: urlVal,
+          repoPath: "",
+          badge: "Web App",
+          frameRestricted: isLikelyRestrictedUrl(urlVal),
+          updatedAt: today
+        };
+      }
     }
 
-    if (!customSlidesMap[targetSubId]) customSlidesMap[targetSubId] = [];
-    customSlidesMap[targetSubId].unshift(newSlide);
-    if (pairLinkId) {
-      patchRecordFields("link", targetSubId, pairLinkId, { pairedSlideId: newSlide.id, unpairedAuto: false });
+    // 2. Prepare New Slide to Attach (optional)
+    const keptExistingSlides = modalExistingSlidesList.filter(sl => !modalRemovedSlideIds.has(sl.id));
+    let addedSlide = null;
+    const slideTitleInput = document.getElementById("top-slide-title")?.value.trim() || "";
+
+    if (topicSlideMode === "pdf") {
+      const pdfFile = document.getElementById("top-pdf-file")?.files[0];
+      if (pdfFile) {
+        const slId = "sl-" + (Date.now() + 1);
+        const key = "pdf-" + (Date.now() + 1);
+        await StudyVaultDB.setBlob(key, pdfFile);
+        addedSlide = {
+          id: slId,
+          title: slideTitleInput || pdfFile.name.replace(/\.pdf$/i, "") || title,
+          type: "pdf",
+          idbKey: key,
+          updatedAt: today
+        };
+      }
+    } else if (topicSlideMode === "images") {
+      const imgFiles = Array.from(document.getElementById("top-img-files")?.files || []);
+      if (imgFiles.length > 0) {
+        const slId = "sl-" + (Date.now() + 1);
+        const key = "imgs-" + (Date.now() + 1);
+        await StudyVaultDB.setBlob(key, imgFiles);
+        addedSlide = {
+          id: slId,
+          title: slideTitleInput || `${title} (รูปสไลด์ ${imgFiles.length} หน้า)`,
+          type: "images",
+          idbKey: key,
+          updatedAt: today
+        };
+      }
+    } else if (topicSlideMode === "url") {
+      const slUrl = document.getElementById("top-slide-url-input")?.value.trim() || "";
+      if (slUrl) {
+        addedSlide = {
+          id: "sl-" + (Date.now() + 1),
+          title: slideTitleInput || title,
+          type: "url",
+          url: slUrl,
+          updatedAt: today
+        };
+      }
     }
+
+    const finalSlides = addedSlide ? [...keptExistingSlides, addedSlide] : keptExistingSlides;
+    let savedTopicId = null;
+
+    if (editTopicId) {
+      const promoted = promoteTopicToCustom(targetSubId, editTopicId);
+      if (promoted) {
+        promoted.title = title;
+        promoted.subtitle = subtitle;
+        promoted.updatedAt = today;
+        promoted.createdAt = Date.now();
+        promoted.link = nextLink;
+        promoted.slides = finalSlides;
+        savedTopicId = promoted.id;
+      }
+    }
+
+    if (!savedTopicId) {
+      const newTopic = {
+        id: "top-" + Date.now(),
+        title,
+        subtitle,
+        updatedAt: today,
+        createdAt: Date.now(),
+        link: nextLink,
+        slides: finalSlides
+      };
+      if (!customTopicsMap[targetSubId]) customTopicsMap[targetSubId] = [];
+      customTopicsMap[targetSubId].unshift(newTopic);
+      savedTopicId = newTopic.id;
+    }
+
     saveState();
-
     allSubjects = getMergedSubjects();
     updateStats();
-    closeAddSlideModal();
-    e.target.reset();
-    if (pairLinkId) {
-      openSubjectTopic(targetSubId, pairLinkId, newSlide.id);
-      showToast(`เพิ่มสไลด์ "${title}" และรวมเข้ากับเรื่องที่เลือกแล้ว`);
-    } else {
-      openSubjectSlide(targetSubId, newSlide.id);
-      showToast(`เพิ่มสไลด์ "${title}" และเปิดเทียบข้างๆ แล้ว`);
-    }
+    closeTopicModal();
+    openTopicStudio(targetSubId, savedTopicId, addedSlide ? { slideId: addedSlide.id, openSlides: true } : {});
+    const hasBoth = Boolean(nextLink && finalSlides.length > 0);
+    showToast(hasBoth ? `บันทึกเรื่อง "${title}" พร้อมเว็บสรุป + สไลด์แล้ว!` : `บันทึกเรื่อง "${title}" เรียบร้อย`);
     triggerAutoSyncIfEnabled();
   });
 
@@ -3485,6 +3708,9 @@ document.addEventListener("DOMContentLoaded", () => {
       exportedAt: new Date().toISOString(),
       customSubjects,
       deletedSubjectIds: [...deletedSubjectIds],
+      customTopicsMap,
+      deletedTopicIds: [...deletedTopicIds],
+      topicOverrides,
       customLinksMap,
       deletedLinkIds: [...deletedLinkIds],
       linkOverrides,
@@ -3508,6 +3734,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = JSON.parse(await file.text());
       customSubjects = data.customSubjects || [];
       deletedSubjectIds = new Set(data.deletedSubjectIds || []);
+      customTopicsMap = data.customTopicsMap || {};
+      deletedTopicIds = new Set(data.deletedTopicIds || []);
+      topicOverrides = data.topicOverrides || {};
       customLinksMap = data.customLinksMap || {};
       deletedLinkIds = new Set(data.deletedLinkIds || []);
       linkOverrides = data.linkOverrides || {};
@@ -3562,8 +3791,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     if (e.key === "Escape") {
       closeAddSubjectModal();
-      closeAddLinkModal();
-      closeAddSlideModal();
+      closeTopicModal();
       closePairTopicModal();
       closeAdminModal();
     }
@@ -3571,28 +3799,47 @@ document.addEventListener("DOMContentLoaded", () => {
 
   window.resetToDefaultData = async function() {
     if (confirm("ต้องการล้างข้อมูลและโน้ตที่เก็บเฉพาะในเครื่องนี้ เพื่อกลับไปรับข้อมูลล่าสุดจากเว็บกลางหรือไม่?")) {
-      [LS_CUSTOM_SUBJECTS, LS_DELETED_SUBJECTS, LS_CUSTOM_LINKS, LS_DELETED_LINKS, LS_LINK_OVERRIDES, LS_CUSTOM_SLIDES, LS_DELETED_SLIDES, LS_SLIDE_OVERRIDES, LS_FAVORITES, LS_LOCKED_SUBJECT].forEach(k => localStorage.removeItem(k));
+      [LS_CUSTOM_SUBJECTS, LS_DELETED_SUBJECTS, LS_CUSTOM_TOPICS, LS_DELETED_TOPICS, LS_TOPIC_OVERRIDES, LS_CUSTOM_LINKS, LS_DELETED_LINKS, LS_LINK_OVERRIDES, LS_CUSTOM_SLIDES, LS_DELETED_SLIDES, LS_SLIDE_OVERRIDES, LS_FAVORITES, LS_LOCKED_SUBJECT].forEach(k => localStorage.removeItem(k));
       await StudyVaultDB.clearAll().catch(() => {});
       blobUrlCache.clear();
       customSubjects = []; deletedSubjectIds.clear();
+      customTopicsMap = {}; deletedTopicIds.clear(); topicOverrides = {};
       customLinksMap = {}; deletedLinkIds.clear(); linkOverrides = {};
       customSlidesMap = {}; deletedSlideIds.clear(); slideOverrides = {}; favorites.clear();
       lockedSubjectId = "";
       allSubjects = getMergedSubjects();
-      updateStats(); renderCategories(); navigateHome();
+      updateStats(); renderCategories(); navigateHome(true, "__ALL__");
       showToast("รีเซ็ตข้อมูลในเครื่องเรียบร้อย");
     }
   };
 
-  window.addEventListener("hashchange", () => {
-    const hash = window.location.hash;
+  function routeByHash(hash) {
+    const mTopic = hash.match(/^#subject\/([^/]+)\/topic\/([^/]+)$/);
+    if (mTopic) {
+      const [, subId, topId] = mTopic;
+      if (allSubjects.some(s => s.id === subId)) {
+        openTopicStudio(subId, topId, {});
+        return true;
+      }
+      return false;
+    }
     if (hash.startsWith("#subject/")) {
       const id = hash.replace("#subject/", "");
-      if (allSubjects.some(s => s.id === id)) openSubject(id, false);
-      else navigateHome(true);
-    } else {
-      navigateHome(false);
+      if (allSubjects.some(s => s.id === id)) {
+        selectedHomeSubjectId = id;
+        navigateHome(false);
+        return true;
+      }
+      return false;
     }
+    navigateHome(false);
+    return true;
+  }
+
+  window.addEventListener("hashchange", () => {
+    const hash = window.location.hash;
+    if (hash && !routeByHash(hash)) navigateHome(true, "__ALL__");
+    else if (!hash) navigateHome(false);
   });
   window.addEventListener("resize", () => requestAnimationFrame(updateScopeThumb));
 
@@ -3620,7 +3867,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (subId && allSubjects.some(s => s.id === subId)) {
         mainTopbar.classList.add("hidden");
         mainFooter.classList.add("hidden");
-        openSubject(subId, false);
+        openSubject(subId, false, { slideId: slId, openSlides: true });
         wsSidebar.classList.add("hidden");
         wsWebPane.classList.add("hidden");
         splitResizer.classList.add("hidden");
@@ -3634,12 +3881,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const initialHash = window.location.hash;
-    if (initialHash.startsWith("#subject/")) {
-      const id = initialHash.replace("#subject/", "");
-      if (allSubjects.some(s => s.id === id)) {
-        openSubject(id, false);
-        return;
-      }
+    if (initialHash) {
+      if (routeByHash(initialHash)) return;
       history.replaceState("", document.title, window.location.pathname + window.location.search);
     }
     renderSubjectsGrid();

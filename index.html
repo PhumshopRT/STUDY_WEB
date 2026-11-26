@@ -283,7 +283,7 @@
       
       <!-- Left Pill: Brand + Category Scope Tabs -->
       <div class="sv-bar pointer-events-auto h-12 rounded-2xl px-2 flex items-center gap-2 max-w-full overflow-x-auto custom-scrollbar">
-        <button onclick="navigateHome()" class="flex items-center gap-2.5 px-1.5 py-1 rounded-xl hover:bg-[var(--s3)] transition-colors flex-shrink-0">
+        <button onclick="navigateHome(true, '__ALL__')" class="flex items-center gap-2.5 px-1.5 py-1 rounded-xl hover:bg-[var(--s3)] transition-colors flex-shrink-0">
           <img src="icons/icon-192.png" alt="Study Hub Year 2 Logo" class="w-8 h-8 rounded-xl shadow-sm object-contain flex-shrink-0">
           <div class="text-left leading-tight">
             <span class="font-bold text-sm tracking-tight text-[var(--tx)] block">Study Hub</span>
@@ -331,19 +331,20 @@
         </button>
 
         <button 
-          onclick="openQuickSlideUpload()"
+          id="open-add-topic-btn"
+          onclick="openTopicModal()"
           class="admin-only h-8 px-3 rounded-xl bg-[var(--s3)] hover:bg-[var(--s4)] border border-[var(--accent-32)] text-[var(--accent)] text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition-colors"
-          title="อัปโหลดลิงก์เว็บหรือสไลด์เข้าวิชาที่ต้องการ"
+          title="สร้างเรื่องใหม่พร้อมเว็บสรุปและสไลด์ในขั้นตอนเดียว"
         >
-          <i class="ph ph-upload-simple text-sm"></i>
-          <span class="hidden sm:inline">เพิ่มลิงก์/สไลด์</span>
+          <i class="ph ph-plus-circle text-sm"></i>
+          <span class="hidden sm:inline">เพิ่มเรื่องใหม่</span>
         </button>
 
         <button 
           id="open-add-subject-btn"
           class="admin-only sv-btn-primary h-8 px-3 rounded-xl text-xs flex items-center gap-1.5 whitespace-nowrap"
         >
-          <i class="ph ph-plus-circle text-sm"></i>
+          <i class="ph ph-folders text-sm"></i>
           <span>เพิ่ม / ลบวิชา</span>
         </button>
       </div>
@@ -385,8 +386,8 @@
           <strong id="stat-subjects" class="text-sm font-bold text-[var(--tx)]">00</strong>
         </div>
         <div class="sv-surface px-3.5 py-2 rounded-xl flex items-center gap-2">
-          <i class="ph ph-link-simple text-sky-500 text-sm"></i>
-          <span class="text-[var(--tx3)]">ลิงก์</span>
+          <i class="ph ph-book-open-text text-sky-500 text-sm"></i>
+          <span class="text-[var(--tx3)]">เรื่อง</span>
           <strong id="stat-links" class="text-sm font-bold text-[var(--tx)]">00</strong>
         </div>
         <div class="sv-surface px-3.5 py-2 rounded-xl flex items-center gap-2">
@@ -407,13 +408,13 @@
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
         <div id="subject-tabs-rail" class="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 flex-1 min-w-0"></div>
         <div id="home-view-mode-group" class="flex items-center gap-1 p-1 rounded-xl bg-[var(--rail)] border border-[var(--line)] text-[11px] flex-shrink-0 self-start sm:self-auto">
-          <button onclick="setHomeViewMode('feed')" id="home-mode-feed" class="px-2.5 py-1 rounded-lg bg-[var(--accent)] text-white font-semibold flex items-center gap-1 transition whitespace-nowrap">
-            <i class="ph ph-sparkle text-xs"></i>
-            <span>เรื่อง / สไลด์มาใหม่</span>
-          </button>
-          <button onclick="setHomeViewMode('subjects')" id="home-mode-subjects" class="px-2.5 py-1 rounded-lg text-[var(--tx2)] hover:text-[var(--tx)] font-medium flex items-center gap-1 transition whitespace-nowrap">
+          <button onclick="setHomeViewMode('subjects')" id="home-mode-subjects" class="px-2.5 py-1 rounded-lg bg-[var(--accent)] text-white font-semibold flex items-center gap-1 transition whitespace-nowrap">
             <i class="ph ph-books text-xs"></i>
             <span>การ์ดรายวิชา</span>
+          </button>
+          <button onclick="setHomeViewMode('feed')" id="home-mode-feed" class="px-2.5 py-1 rounded-lg text-[var(--tx2)] hover:text-[var(--tx)] font-medium flex items-center gap-1 transition whitespace-nowrap">
+            <i class="ph ph-sparkle text-xs"></i>
+            <span>เรื่องมาใหม่ทั้งหมด</span>
           </button>
         </div>
       </div>
@@ -433,31 +434,36 @@
   <!-- ===================================================================== -->
   <main id="view-subject" class="hidden max-w-[1480px] mx-auto px-4 sm:px-6 pt-5 pb-4 flex-1 w-full flex flex-col gap-3.5 sv-arrive">
     
-    <!-- Workspace Header -->
+    <!-- Workspace / Topic Studio Header -->
     <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-[var(--line)] flex-shrink-0">
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2.5 min-w-0 flex-wrap">
         <button 
           onclick="navigateHome()" 
-          class="sv-surface h-8 px-3 rounded-xl text-xs font-medium text-[var(--tx2)] hover:text-[var(--tx)] hover:bg-[var(--s3)] flex items-center gap-1.5 transition-colors active:scale-[0.98]"
+          class="sv-surface h-8 px-3 rounded-xl text-xs font-medium text-[var(--tx2)] hover:text-[var(--tx)] hover:bg-[var(--s3)] flex items-center gap-1.5 transition-colors active:scale-[0.98] flex-shrink-0"
         >
           <i class="ph ph-arrow-left text-sm"></i>
-          <span>กลับหน้ารวม</span>
+          <span id="ws-back-label">กลับหน้าเรื่อง</span>
         </button>
 
         <div class="h-4 w-[1px] bg-[var(--line-2)] hidden sm:block"></div>
 
-        <div class="flex items-center gap-2.5">
+        <div class="flex items-center gap-2.5 min-w-0">
           <div id="ws-subject-icon" class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-base shadow-sm flex-shrink-0">
             📘
           </div>
-          <div>
-            <div class="flex items-center gap-2 tnum">
-              <span id="ws-subject-code" class="text-[11px] font-bold px-2 py-0.5 rounded-md bg-[var(--accent-08)] text-[var(--accent)] border border-[var(--accent-32)]">RADP301</span>
-              <span id="ws-subject-category" class="text-xs text-[var(--tx3)]">วิทยาศาสตร์สุขภาพ</span>
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5 tnum flex-wrap">
+              <button onclick="navigateHome()" id="ws-subject-code" class="text-[11px] font-bold px-2 py-0.5 rounded-md bg-[var(--accent-08)] text-[var(--accent)] border border-[var(--accent-32)] hover:opacity-80 transition">RADP301</button>
+              <span id="ws-subject-title" class="text-xs font-medium text-[var(--tx3)] truncate max-w-[180px]">วิชารังสีพยาธิ</span>
+              <i class="ph ph-caret-right text-[10px] text-[var(--tx4)]"></i>
+              <span id="ws-subject-category" class="hidden text-[10px] text-[var(--tx3)]">วิทยาศาสตร์สุขภาพ</span>
             </div>
-            <h1 id="ws-subject-title" class="text-sm sm:text-base font-bold text-[var(--tx)] leading-tight mt-0.5">
-              วิชารังสีพยาธิ (Radiopathology)
-            </h1>
+            <div class="flex items-center gap-2 mt-0.5">
+              <h1 id="ws-topic-title" class="text-sm sm:text-base font-bold text-[var(--tx)] leading-tight truncate max-w-[320px]">
+                01-X-RAY machine
+              </h1>
+              <select id="ws-topic-switcher" class="sv-input h-6 px-1.5 rounded-md text-[11px] min-w-0 max-w-[170px] truncate" title="สลับไปเรื่องอื่นในวิชานี้"></select>
+            </div>
           </div>
         </div>
       </div>
@@ -486,18 +492,20 @@
 
         <button 
           id="open-add-slide-btn"
+          onclick="editActiveTopic('slide')"
           class="admin-only sv-surface h-8 px-2.5 rounded-xl text-xs font-medium text-[var(--tx)] hover:bg-[var(--s3)] flex items-center gap-1.5 transition-colors"
         >
-          <i class="ph ph-presentation-chart text-sm text-[var(--accent)]"></i>
-          <span>เพิ่มสไลด์</span>
+          <i class="ph ph-presentation-chart text-sm text-pink-400"></i>
+          <span>+ เพิ่มสไลด์ในเรื่องนี้</span>
         </button>
 
         <button 
           id="open-add-link-btn"
+          onclick="editActiveTopic('link')"
           class="admin-only sv-btn-primary h-8 px-3 rounded-xl text-xs flex items-center gap-1"
         >
-          <i class="ph ph-plus text-sm"></i>
-          <span>เพิ่มลิงก์</span>
+          <i class="ph ph-pencil-simple text-sm"></i>
+          <span>แก้เรื่องนี้</span>
         </button>
 
         <button 
@@ -508,15 +516,16 @@
           <i class="ph ph-star text-sm"></i>
         </button>
 
-        <!-- Explicit Delete Subject Button with text label -->
         <button 
-          id="ws-delete-subject-btn"
+          id="ws-delete-topic-btn"
+          onclick="deleteActiveTopic()"
           class="admin-only h-8 px-2.5 rounded-xl border border-[var(--line)] bg-[var(--s1)] text-[var(--danger)] hover:bg-[var(--danger-bg)] text-xs font-medium flex items-center gap-1 transition-colors"
-          title="ลบวิชานี้"
+          title="ลบเรื่องนี้ (สรุป + สไลด์)"
         >
           <i class="ph ph-trash text-sm"></i>
-          <span>ลบวิชา</span>
+          <span>ลบเรื่องนี้</span>
         </button>
+        <button id="ws-delete-subject-btn" class="hidden"></button>
       </div>
     </div>
 
@@ -542,9 +551,9 @@
           <div class="flex items-center justify-between px-1 tnum">
             <h2 class="text-xs font-semibold text-[var(--tx2)] flex items-center gap-1.5">
               <i class="ph ph-presentation-chart text-[var(--accent)]"></i>
-              <span>สไลด์เรียน (<span id="ws-slides-count">00</span>)</span>
+              <span>สไลด์ในเรื่องนี้ (<span id="ws-slides-count">00</span>)</span>
             </h2>
-            <button onclick="openAddSlideModal()" class="admin-only text-[11px] font-semibold text-[var(--accent)] hover:underline">+ เพิ่มสไลด์</button>
+            <button onclick="openTopicModal(activeSubjectId, activeTopicId, 'slide')" class="admin-only text-[11px] font-semibold text-[var(--accent)] hover:underline">+ เพิ่มสไลด์</button>
           </div>
           <div id="ws-slides-list" class="space-y-1.5"></div>
         </div>
@@ -593,7 +602,7 @@
 
             <!-- Actions -->
             <div class="flex items-center gap-1 flex-shrink-0">
-              <button onclick="editActiveLink()" id="stage-edit-btn" class="admin-only w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--accent)] hover:bg-[var(--s3)] transition-colors" title="แก้ไข / วางโค้ด HTML">
+              <button onclick="editActiveTopic('link', true)" id="stage-edit-btn" class="admin-only w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--accent)] hover:bg-[var(--s3)] transition-colors" title="แก้ไข / วางโค้ด HTML">
                 <i class="ph ph-pencil-simple text-sm"></i>
               </button>
               <button id="stage-refresh-btn" class="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--s3)] transition-colors" title="โหลดใหม่">
@@ -621,19 +630,19 @@
               <span class="text-[var(--tx2)]">เว็บไม่แสดงผล?</span>
               <button onclick="openDualDesktopWindows()" class="text-[var(--accent)] font-semibold hover:underline">เปิดหน้าต่างคู่ Desktop</button>
               <span class="admin-only text-[var(--tx4)]">|</span>
-              <button onclick="editActiveLink(true)" class="admin-only text-[var(--tx)] font-medium hover:underline">วางโค้ด HTML</button>
+              <button onclick="editActiveTopic('link', true)" class="admin-only text-[var(--tx)] font-medium hover:underline">วางโค้ด HTML</button>
               <button onclick="document.getElementById('stage-timeout-bar').classList.add('hidden')" class="text-[var(--tx3)] hover:text-[var(--tx)] ml-1"><i class="ph ph-x"></i></button>
             </div>
 
             <!-- Empty Link State -->
             <div id="stage-empty-view" class="hidden p-8 text-center space-y-3 max-w-sm">
               <div class="w-12 h-12 mx-auto rounded-2xl bg-[var(--s3)] border border-[var(--accent-32)] flex items-center justify-center text-xl text-[var(--accent)]">
-                <i class="ph ph-link-simple"></i>
+                <i class="ph ph-code"></i>
               </div>
-              <p class="text-sm font-semibold text-[var(--tx)]">ยังไม่มีลิงก์เว็บในวิชานี้</p>
-              <p class="text-xs text-[var(--tx2)]">วิชานี้ยังไม่มีลิงก์บทเรียนในขณะนี้</p>
-              <button onclick="openAddLinkModal()" class="admin-only sv-btn-primary h-9 px-4 rounded-xl text-xs">
-                + เพิ่มลิงก์แรกเข้าวิชานี้
+              <p class="text-sm font-semibold text-[var(--tx)]">เรื่องนี้ยังไม่มีเว็บสรุป / โค้ด HTML</p>
+              <p class="text-xs text-[var(--tx2)]">เพิ่มลิงก์เว็บหรือวางโค้ด HTML Interactive ของเรื่องนี้ไว้เทียบข้างสไลด์ได้เลย</p>
+              <button onclick="editActiveTopic('link', true)" class="admin-only sv-btn-primary h-9 px-4 rounded-xl text-xs">
+                + เพิ่มเว็บสรุป / โค้ด HTML ให้เรื่องนี้
               </button>
             </div>
 
@@ -659,7 +668,7 @@
                   </div>
 
                   <div class="space-y-2">
-                    <button onclick="editActiveLink(true)" class="admin-only sv-btn-primary w-full h-9 px-4 rounded-xl text-xs flex items-center justify-center gap-2">
+                    <button onclick="editActiveTopic('link', true)" class="admin-only sv-btn-primary w-full h-9 px-4 rounded-xl text-xs flex items-center justify-center gap-2">
                       <i class="ph ph-code text-sm"></i>
                       <span>วางโค้ด HTML ของเว็บนี้ (เพื่อให้แสดงเต็มๆ ในกรอบนี้)</span>
                     </button>
@@ -707,7 +716,7 @@
                 <i class="ph ph-arrows-out-simple text-sm"></i>
                 <span class="hidden sm:inline">เต็มจอ</span>
               </button>
-              <button onclick="openAddSlideModal()" class="admin-only w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx2)] hover:text-[var(--accent)] hover:bg-[var(--s3)] transition-colors" title="เพิ่มสไลด์ใหม่">
+              <button onclick="openTopicModal(activeSubjectId, activeTopicId, 'slide')" class="admin-only w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx2)] hover:text-[var(--accent)] hover:bg-[var(--s3)] transition-colors" title="เพิ่มสไลด์เข้าเรื่องนี้">
                 <i class="ph ph-plus text-sm"></i>
               </button>
               <button onclick="popoutSlideWindow()" class="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--s3)] transition-colors" title="แยกหน้าต่างสไลด์ออกมาเดี่ยวๆ">
@@ -731,12 +740,12 @@
                 <i class="ph ph-presentation-chart"></i>
               </div>
               <div class="space-y-1 max-w-xs">
-                <h3 class="text-sm font-semibold text-[var(--tx)]">ยังไม่มีสไลด์เรียนในวิชานี้</h3>
-                <p class="text-xs text-[var(--tx2)]">ยังไม่มีไฟล์ PDF หรือรูปสไลด์อัปโหลดไว้ในวิชานี้</p>
+                <h3 class="text-sm font-semibold text-[var(--tx)]">เรื่องนี้ยังไม่มีสไลด์ PDF</h3>
+                <p class="text-xs text-[var(--tx2)]">กดปุ่มด้านล่างหรือลากไฟล์ PDF มาวางในกรอบนี้เพื่อเพิ่มสไลด์ของเรื่องนี้ได้เลย</p>
               </div>
-              <button onclick="openAddSlideModal()" class="admin-only sv-btn-primary h-9 px-4 rounded-xl text-xs flex items-center gap-1.5">
+              <button onclick="openTopicModal(activeSubjectId, activeTopicId, 'slide')" class="admin-only sv-btn-primary h-9 px-4 rounded-xl text-xs flex items-center gap-1.5">
                 <i class="ph ph-upload-simple text-sm"></i>
-                <span>เพิ่มสไลด์เรียนแรก</span>
+                <span>+ อัปโหลดสไลด์เข้าเรื่องนี้</span>
               </button>
             </div>
 
@@ -934,208 +943,125 @@
   </div>
 
   <!-- ===================================================================== -->
-  <!-- MODAL 2: เพิ่ม / แก้ไขลิงก์ (Upload Hub Tab 1 + Inline Subject Option)  -->
+  <!-- MODAL 2: เพิ่ม / แก้ไขเรื่องในวิชา (เว็บสรุป + สไลด์ในเรื่องเดียว)       -->
   <!-- ===================================================================== -->
-  <div id="add-link-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="sv-surface w-full max-w-lg rounded-2xl overflow-hidden flex flex-col max-h-[90vh]">
+  <div id="topic-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="sv-surface w-full max-w-xl rounded-2xl overflow-hidden flex flex-col max-h-[92vh]">
       <div class="px-5 py-3.5 border-b border-[var(--line)] flex items-center justify-between bg-[var(--rail)]">
         <div class="flex items-center gap-2">
-          <i class="ph ph-upload-simple text-[var(--accent)] text-lg"></i>
-          <h3 id="lnk-modal-heading" class="font-bold text-sm text-[var(--tx)]">อัปโหลดลิงก์ / สไลด์เข้าวิชา</h3>
+          <i class="ph ph-book-bookmark text-[var(--accent)] text-lg"></i>
+          <h3 id="top-modal-heading" class="font-bold text-sm text-[var(--tx)]">เพิ่มเรื่องใหม่ (เว็บสรุป + สไลด์ในเรื่องเดียว)</h3>
         </div>
-        <button onclick="closeAddLinkModal()" class="p-1 text-[var(--tx3)] hover:text-[var(--tx)] rounded-lg">
+        <button onclick="closeTopicModal()" class="p-1 text-[var(--tx3)] hover:text-[var(--tx)] rounded-lg">
           <i class="ph ph-x text-base"></i>
         </button>
       </div>
 
-      <!-- Clear Upload Hub Mode Switcher (Distinct from Add Subject) -->
-      <div id="lnk-hub-tabs" class="px-5 pt-3.5">
-        <div class="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-[var(--rail)] border border-[var(--line)] text-xs">
-          <button type="button" class="py-2 rounded-lg bg-[var(--accent)] text-white font-semibold flex items-center justify-center gap-1.5 shadow-sm">
-            <i class="ph ph-link-simple text-sm"></i>
-            <span>เพิ่มลิงก์ / โค้ดเว็บ</span>
-          </button>
-          <button type="button" onclick="closeAddLinkModal(); openAddSlideModal();" class="py-2 rounded-lg text-[var(--tx2)] hover:text-[var(--tx)] hover:bg-[var(--s2)] font-medium flex items-center justify-center gap-1.5 transition">
-            <i class="ph ph-presentation-chart text-sm text-pink-400"></i>
-            <span>เพิ่มสไลด์ PDF / รูปภาพ</span>
-          </button>
-        </div>
-      </div>
-
-      <form id="add-link-form" class="p-5 overflow-y-auto custom-scrollbar space-y-4 text-xs">
-        <input type="hidden" id="lnk-edit-id" value="">
+      <form id="topic-form" class="p-5 overflow-y-auto custom-scrollbar space-y-4 text-xs">
+        <input type="hidden" id="top-edit-id" value="">
 
         <!-- Subject Selector + Lock Toggle (with Inline Create fallback if 0 subjects) -->
         <div class="p-3 rounded-xl bg-[var(--rail)] border border-[var(--line)] space-y-2">
           <div class="flex items-center justify-between gap-2">
-            <label class="text-xs font-semibold text-[var(--tx2)]">เลือกรายวิชาปลายทาง *</label>
+            <label class="text-xs font-semibold text-[var(--tx2)]">อยู่ในรายวิชา *</label>
             <div class="flex items-center gap-1.5">
-              <button type="button" onclick="toggleInlineSubjectBox('lnk')" id="lnk-inline-toggle-btn" class="px-2 py-0.5 rounded-md border border-[var(--line-2)] bg-[var(--s1)] text-[var(--tx2)] hover:text-[var(--accent)] text-[11px] transition">
+              <button type="button" onclick="toggleInlineSubjectBox('top')" id="top-inline-toggle-btn" class="px-2 py-0.5 rounded-md border border-[var(--line-2)] bg-[var(--s1)] text-[var(--tx2)] hover:text-[var(--accent)] text-[11px] transition">
                 + สร้างวิชาใหม่
               </button>
-              <button type="button" onclick="toggleSubjectLock()" id="lnk-lock-btn" class="px-2 py-0.5 rounded-md border border-[var(--line-2)] bg-[var(--s1)] text-[var(--tx2)] text-[11px] flex items-center gap-1 transition">
+              <button type="button" onclick="toggleSubjectLock()" id="top-lock-btn" class="px-2 py-0.5 rounded-md border border-[var(--line-2)] bg-[var(--s1)] text-[var(--tx2)] text-[11px] flex items-center gap-1 transition">
                 <i class="ph ph-lock-open"></i><span>ล็อควิชานี้ไว้</span>
               </button>
             </div>
           </div>
-          <select id="lnk-subject-select" class="sv-input w-full h-9 px-3 rounded-xl text-xs font-medium"></select>
-          <div id="lnk-inline-sub-box" class="hidden space-y-2 pt-1">
-            <p class="text-[11px] text-[var(--accent)] font-medium">กรอกรหัสและชื่อวิชา เพื่อสร้างวิชาใหม่พร้อมบันทึกลิงก์นี้ได้เลย:</p>
+          <select id="top-subject-select" class="sv-input w-full h-9 px-3 rounded-xl text-xs font-medium"></select>
+          <div id="top-inline-sub-box" class="hidden space-y-2 pt-1">
+            <p class="text-[11px] text-[var(--accent)] font-medium">กรอกรหัสและชื่อวิชา เพื่อสร้างวิชาใหม่พร้อมเรื่องนี้ได้เลย:</p>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <input type="text" id="lnk-inline-code" placeholder="รหัสวิชา เช่น RADP301" class="sv-input w-full h-8 px-2.5 rounded-lg text-xs">
-              <input type="text" id="lnk-inline-title" placeholder="ชื่อวิชา เช่น วิชารังสีพยาธิ" class="sv-input sm:col-span-2 w-full h-8 px-2.5 rounded-lg text-xs">
+              <input type="text" id="top-inline-code" placeholder="รหัสวิชา เช่น 216" class="sv-input w-full h-8 px-2.5 rounded-lg text-xs">
+              <input type="text" id="top-inline-title" placeholder="ชื่อวิชา เช่น ป้องกันทางรังสี" class="sv-input sm:col-span-2 w-full h-8 px-2.5 rounded-lg text-xs">
             </div>
           </div>
         </div>
 
-        <div>
-          <label class="block text-xs font-semibold text-[var(--tx2)] mb-1">ชื่อบทเรียน / ชื่อลิงก์ *</label>
-          <input type="text" id="lnk-title" placeholder="เช่น สรุปบทที่ 2, เกมทายรอยโรค, กราฟ HU" required class="sv-input w-full h-9 px-3 rounded-xl">
-        </div>
-
-        <!-- Source Mode: URL vs HTML -->
-        <div class="space-y-2 p-3 rounded-xl bg-[var(--rail)] border border-[var(--line)]">
-          <div class="flex items-center justify-between">
-            <label class="text-xs font-semibold text-[var(--tx2)]">แหล่งที่มา *</label>
-            <div class="flex gap-1 bg-[var(--s1)] p-0.5 rounded-lg border border-[var(--line)]">
-              <button type="button" onclick="setLnkSourceMode('url')" id="lnk-mode-url" class="px-2.5 py-0.5 rounded bg-[var(--accent)] text-white text-[11px] font-medium">ใส่ลิงก์ URL</button>
-              <button type="button" onclick="setLnkSourceMode('html')" id="lnk-mode-html" class="px-2.5 py-0.5 rounded text-[var(--tx3)] text-[11px]">วางโค้ด / ไฟล์ HTML</button>
-            </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-[var(--tx2)] mb-1">ชื่อเรื่อง / บทเรียน *</label>
+            <input type="text" id="top-title" placeholder="เช่น 01-X-RAY machine" required class="sv-input w-full h-9 px-3 rounded-xl font-medium">
           </div>
-
-          <div id="lnk-url-group">
-            <input type="text" id="lnk-url" placeholder="https://..." class="sv-input w-full h-9 px-3 rounded-xl font-mono">
-          </div>
-
-          <div id="lnk-html-group" class="hidden space-y-2">
-            <input type="file" id="lnk-html-file" accept=".html,.htm" class="block w-full text-[11px] text-[var(--tx2)] file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-[var(--s3)] file:text-[var(--accent)] file:font-medium cursor-pointer">
-            <textarea id="lnk-html-code" rows="4" placeholder="วางโค้ด HTML (รองรับเกม กราฟ และแบบจำลอง Interactive) เพื่อแสดงผลเต็มจอในกรอบได้เลย" class="sv-input w-full p-2.5 rounded-xl font-mono text-[11px]"></textarea>
+          <div>
+            <label class="block text-xs font-medium text-[var(--tx3)] mb-1">รายละเอียดสั้นๆ (ไม่ใส่ก็ได้)</label>
+            <input type="text" id="top-subtitle" placeholder="เช่น โครงสร้างและการทำงานเครื่องเอกซเรย์" class="sv-input w-full h-9 px-3 rounded-xl">
           </div>
         </div>
 
-        <div>
-          <label class="block text-xs font-medium text-[var(--tx3)] mb-1">คำอธิบายเพิ่มเติม (ไม่ใส่ก็ได้)</label>
-          <input type="text" id="lnk-subtitle" placeholder="รายละเอียดสั้นๆ ของลิงก์นี้" class="sv-input w-full h-9 px-3 rounded-xl">
-        </div>
-
-        <!-- Optional Paired Slide Section -->
-        <div id="lnk-pair-section" class="space-y-2 p-3 rounded-xl bg-[var(--rail)] border border-[var(--line)]">
+        <!-- Section 1: Summary Web / HTML of this Topic -->
+        <div id="top-link-section" class="space-y-2 p-3.5 rounded-xl bg-[var(--rail)] border border-[var(--line)]">
           <div class="flex items-center justify-between gap-2 flex-wrap">
-            <label class="text-xs font-semibold text-[var(--tx2)] flex items-center gap-1.5">
-              <i class="ph ph-presentation-chart text-pink-400"></i>
-              <span>สไลด์คู่กันของเรื่องนี้ (ไม่บังคับ)</span>
+            <label class="text-xs font-semibold text-[var(--tx)] flex items-center gap-1.5">
+              <i class="ph ph-code text-emerald-400"></i>
+              <span>1) เว็บสรุป / โค้ด HTML ของเรื่องนี้ (ปล่อยว่างได้ถ้าเติมทีหลัง)</span>
             </label>
             <div class="flex gap-1 bg-[var(--s1)] p-0.5 rounded-lg border border-[var(--line)] text-[11px]">
-              <button type="button" onclick="setLinkPairMode('none')" id="lnk-pair-none" class="px-2 py-0.5 rounded bg-[var(--accent)] text-white font-medium">ยังไม่แนบ</button>
-              <button type="button" onclick="setLinkPairMode('existing')" id="lnk-pair-existing" class="px-2 py-0.5 rounded text-[var(--tx3)]">เลือกสไลด์ที่มี</button>
-              <button type="button" onclick="setLinkPairMode('pdf')" id="lnk-pair-pdf" class="px-2 py-0.5 rounded text-[var(--tx3)]">+ อัปโหลด PDF คู่</button>
+              <button type="button" onclick="setTopicLinkMode('html')" id="top-link-html" class="px-2.5 py-0.5 rounded bg-[var(--accent)] text-white font-medium">วางโค้ด / ไฟล์ HTML</button>
+              <button type="button" onclick="setTopicLinkMode('url')" id="top-link-url" class="px-2.5 py-0.5 rounded text-[var(--tx3)]">ใส่ลิงก์ URL</button>
+              <button type="button" onclick="setTopicLinkMode('none')" id="top-link-none" class="px-2.5 py-0.5 rounded text-[var(--tx3)]">ยังไม่ใส่</button>
             </div>
           </div>
 
-          <div id="lnk-pair-existing-group" class="hidden space-y-1.5">
-            <select id="lnk-pair-slide-select" class="sv-input w-full h-9 px-3 rounded-xl text-xs"></select>
-            <p class="text-[10px] text-[var(--tx3)]">จะรวมสรุปและสไลด์ที่เลือกเข้าเป็นเรื่องเดียว (การ์ดเดียว เปิดอ่านคู่กันทันที)</p>
+          <div id="top-existing-link-badge" class="hidden p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-[11px] flex items-center justify-between gap-2">
+            <span>✓ มีเว็บสรุปเดิมของเรื่องนี้อยู่แล้ว (วางใหม่ถ้าต้องการแทนที่ หรือปล่อยว่างเพื่อใช้ของเดิม)</span>
           </div>
 
-          <div id="lnk-pair-pdf-group" class="hidden space-y-2">
-            <input type="file" id="lnk-pair-pdf-file" accept=".pdf" class="block w-full text-[11px] text-[var(--tx2)] file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-[var(--s3)] file:text-[var(--accent)] file:font-semibold cursor-pointer border border-dashed border-[var(--line-2)] rounded-xl p-1.5">
-            <input type="text" id="lnk-pair-pdf-title" placeholder="ชื่อชุดสไลด์ (ว่างไว้จะใช้ชื่อเดียวกับไฟล์หรือเรื่องนี้)" class="sv-input w-full h-8 px-2.5 rounded-lg text-xs">
+          <div id="top-link-html-group" class="space-y-2">
+            <input type="file" id="top-html-file" accept=".html,.htm" class="block w-full text-[11px] text-[var(--tx2)] file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-[var(--s3)] file:text-[var(--accent)] file:font-medium cursor-pointer">
+            <textarea id="top-html-code" rows="3" placeholder="วางโค้ด HTML ของเรื่องนี้ (เกม กราฟ Interactive หรือเว็บสรุป) — เว้นว่างได้ถ้ายังไม่มี" class="sv-input w-full p-2.5 rounded-xl font-mono text-[11px]"></textarea>
+          </div>
+
+          <div id="top-link-url-group" class="hidden">
+            <input type="text" id="top-url-input" placeholder="https://..." class="sv-input w-full h-9 px-3 rounded-xl font-mono">
           </div>
         </div>
 
-        <button type="submit" id="lnk-submit-btn" class="sv-btn-primary w-full h-9 px-4 rounded-xl text-xs">
-          บันทึกลิงก์เข้าวิชานี้
-        </button>
-      </form>
-    </div>
-  </div>
-
-  <!-- ===================================================================== -->
-  <!-- MODAL 3: เพิ่มสไลด์เรียน (Upload Hub Tab 2 + PDF / Images / URL)        -->
-  <!-- ===================================================================== -->
-  <div id="add-slide-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="sv-surface w-full max-w-lg rounded-2xl overflow-hidden flex flex-col max-h-[90vh]">
-      <div class="px-5 py-3.5 border-b border-[var(--line)] flex items-center justify-between bg-[var(--rail)]">
-        <div class="flex items-center gap-2">
-          <i class="ph ph-upload-simple text-[var(--accent)] text-lg"></i>
-          <h3 class="font-bold text-sm text-[var(--tx)]">อัปโหลดลิงก์ / สไลด์เข้าวิชา</h3>
-        </div>
-        <button onclick="closeAddSlideModal()" class="p-1 text-[var(--tx3)] hover:text-[var(--tx)] rounded-lg">
-          <i class="ph ph-x text-base"></i>
-        </button>
-      </div>
-
-      <!-- Clear Upload Hub Mode Switcher (Distinct from Add Subject) -->
-      <div class="px-5 pt-3.5">
-        <div class="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-[var(--rail)] border border-[var(--line)] text-xs">
-          <button type="button" onclick="closeAddSlideModal(); openAddLinkModal();" class="py-2 rounded-lg text-[var(--tx2)] hover:text-[var(--tx)] hover:bg-[var(--s2)] font-medium flex items-center justify-center gap-1.5 transition">
-            <i class="ph ph-link-simple text-sm text-[var(--accent)]"></i>
-            <span>เพิ่มลิงก์ / โค้ดเว็บ</span>
-          </button>
-          <button type="button" class="py-2 rounded-lg bg-[var(--accent)] text-white font-semibold flex items-center justify-center gap-1.5 shadow-sm">
-            <i class="ph ph-presentation-chart text-sm"></i>
-            <span>เพิ่มสไลด์ PDF / รูปภาพ</span>
-          </button>
-        </div>
-      </div>
-
-      <form id="add-slide-form" class="p-5 overflow-y-auto custom-scrollbar space-y-4 text-xs">
-        <div class="p-3 rounded-xl bg-[var(--rail)] border border-[var(--line)] space-y-2">
-          <div class="flex items-center justify-between gap-2">
-            <label class="text-xs font-semibold text-[var(--tx2)]">เลือกรายวิชาสำหรับสไลด์นี้ *</label>
-            <div class="flex items-center gap-1.5">
-              <button type="button" onclick="toggleInlineSubjectBox('sl')" id="sl-inline-toggle-btn" class="px-2 py-0.5 rounded-md border border-[var(--line-2)] bg-[var(--s1)] text-[var(--tx2)] hover:text-[var(--accent)] text-[11px] transition">
-                + สร้างวิชาใหม่
-              </button>
-              <button type="button" onclick="toggleSubjectLock()" id="sl-lock-btn" class="px-2 py-0.5 rounded-md border border-[var(--line-2)] bg-[var(--s1)] text-[var(--tx2)] text-[11px] flex items-center gap-1 transition">
-                <i class="ph ph-lock-open"></i><span>ล็อควิชานี้ไว้</span>
-              </button>
+        <!-- Section 2: Slide Deck(s) of this Topic -->
+        <div id="top-slide-section" class="space-y-2.5 p-3.5 rounded-xl bg-[var(--rail)] border border-[var(--line)]">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <label class="text-xs font-semibold text-[var(--tx)] flex items-center gap-1.5">
+              <i class="ph ph-file-pdf text-rose-400"></i>
+              <span>2) สไลด์ PDF / รูปสไลด์ของเรื่องนี้ (แนบพร้อมกันได้เลย)</span>
+            </label>
+            <div class="flex gap-1 bg-[var(--s1)] p-0.5 rounded-lg border border-[var(--line)] text-[11px] flex-wrap">
+              <button type="button" onclick="setTopicSlideMode('pdf')" id="top-sl-pdf" class="px-2 py-0.5 rounded bg-[var(--accent)] text-white font-medium">ไฟล์ PDF</button>
+              <button type="button" onclick="setTopicSlideMode('images')" id="top-sl-images" class="px-2 py-0.5 rounded text-[var(--tx3)]">รูปหลายแผ่น</button>
+              <button type="button" onclick="setTopicSlideMode('url')" id="top-sl-url" class="px-2 py-0.5 rounded text-[var(--tx3)]">ลิงก์ Slides</button>
+              <button type="button" onclick="setTopicSlideMode('none')" id="top-sl-none" class="px-2 py-0.5 rounded text-[var(--tx3)]">ยังไม่เพิ่ม</button>
             </div>
           </div>
-          <select id="sl-subject-select" class="sv-input w-full h-9 px-3 rounded-xl text-xs font-medium"></select>
-          <div id="sl-inline-sub-box" class="hidden space-y-2 pt-1">
-            <p class="text-[11px] text-[var(--accent)] font-medium">กรอกรหัสและชื่อวิชา เพื่อสร้างวิชาใหม่พร้อมอัปโหลดสไลด์นี้ได้เลย:</p>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <input type="text" id="sl-inline-code" placeholder="รหัสวิชา เช่น RADP301" class="sv-input w-full h-8 px-2.5 rounded-lg text-xs">
-              <input type="text" id="sl-inline-title" placeholder="ชื่อวิชา เช่น วิชารังสีพยาธิ" class="sv-input sm:col-span-2 w-full h-8 px-2.5 rounded-lg text-xs">
-            </div>
+
+          <div id="top-existing-slides-wrap" class="hidden space-y-1.5">
+            <p class="text-[10px] font-semibold text-[var(--tx3)]">สไลด์ที่มีอยู่แล้วในเรื่องนี้:</p>
+            <div id="top-existing-slides-list" class="flex flex-wrap gap-1.5"></div>
+          </div>
+
+          <div id="top-sl-title-row">
+            <input type="text" id="top-slide-title" placeholder="ชื่อชุดสไลด์ (ไม่ใส่จะใช้ชื่อไฟล์ PDF หรือชื่อเรื่องอัตโนมัติ)" class="sv-input w-full h-8 px-2.5 rounded-lg text-[11px]">
+          </div>
+
+          <div id="top-sl-pdf-group" class="space-y-1.5">
+            <input type="file" id="top-pdf-file" accept=".pdf" class="block w-full text-xs text-[var(--tx2)] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-[var(--s3)] file:text-[var(--accent)] file:font-semibold cursor-pointer border border-dashed border-[var(--line-2)] rounded-xl p-2">
+          </div>
+
+          <div id="top-sl-images-group" class="hidden space-y-1.5">
+            <input type="file" id="top-img-files" accept="image/*" multiple class="block w-full text-xs text-[var(--tx2)] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-[var(--s3)] file:text-[var(--accent)] file:font-semibold cursor-pointer border border-dashed border-[var(--line-2)] rounded-xl p-2">
+          </div>
+
+          <div id="top-sl-url-group" class="hidden">
+            <input type="text" id="top-slide-url-input" placeholder="https://docs.google.com/presentation/d/..." class="sv-input w-full h-9 px-3 rounded-xl font-mono">
           </div>
         </div>
 
-        <div class="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-[var(--rail)] border border-[var(--line)]">
-          <button type="button" onclick="setSlideTypeTab('pdf')" id="sl-tab-pdf" class="py-1.5 rounded-lg bg-[var(--accent)] text-white font-medium transition">ไฟล์ PDF</button>
-          <button type="button" onclick="setSlideTypeTab('images')" id="sl-tab-images" class="py-1.5 rounded-lg text-[var(--tx3)] font-medium transition">รูปสไลด์หลายแผ่น</button>
-          <button type="button" onclick="setSlideTypeTab('url')" id="sl-tab-url" class="py-1.5 rounded-lg text-[var(--tx3)] font-medium transition">ลิงก์ Slides / Web</button>
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold text-[var(--tx2)] mb-1">ชื่อชุดสไลด์ *</label>
-          <input type="text" id="sl-title" placeholder="เช่น Lecture 01: Thoracic Pathology" required class="sv-input w-full h-9 px-3 rounded-xl">
-        </div>
-
-        <div id="sl-panel-pdf" class="space-y-2">
-          <label class="block text-xs font-medium text-[var(--tx2)]">เลือกไฟล์ PDF สไลด์อาจารย์ *</label>
-          <input type="file" id="sl-pdf-file" accept=".pdf" class="block w-full text-xs text-[var(--tx2)] file:mr-3 file:py-2 file:px-3.5 file:rounded-xl file:border-0 file:bg-[var(--s3)] file:text-[var(--accent)] file:font-semibold cursor-pointer border border-dashed border-[var(--line-2)] rounded-xl p-2">
-        </div>
-
-        <div id="sl-panel-images" class="hidden space-y-2">
-          <label class="block text-xs font-medium text-[var(--tx2)]">เลือกรูปภาพหน้าสไลด์ (เลือกหลายรูปพร้อมกันได้) *</label>
-          <input type="file" id="sl-img-files" accept="image/*" multiple class="block w-full text-xs text-[var(--tx2)] file:mr-3 file:py-2 file:px-3.5 file:rounded-xl file:border-0 file:bg-[var(--s3)] file:text-[var(--accent)] file:font-semibold cursor-pointer border border-dashed border-[var(--line-2)] rounded-xl p-2">
-        </div>
-
-        <div id="sl-panel-url" class="hidden space-y-2">
-          <label class="block text-xs font-medium text-[var(--tx2)]">ลิงก์ Google Slides / Canva / PDF URL *</label>
-          <input type="text" id="sl-url-input" placeholder="https://docs.google.com/presentation/d/..." class="sv-input w-full h-9 px-3 rounded-xl font-mono">
-        </div>
-
-        <div class="p-3 rounded-xl bg-[var(--rail)] border border-[var(--line)] space-y-1.5">
-          <label class="block text-xs font-semibold text-[var(--tx2)]">รวมเป็นเรื่องเดียวกับสรุปที่มีอยู่ (ไม่บังคับ)</label>
-          <select id="sl-pair-link-select" class="sv-input w-full h-9 px-3 rounded-xl text-xs"></select>
-          <p class="text-[10px] text-[var(--tx3)]">เลือกชื่อเรื่องสรุปเพื่อรวมสไลด์นี้เข้าเป็นเรื่องเดียวกันทันที</p>
-        </div>
-
-        <button type="submit" class="sv-btn-primary w-full h-9 px-4 rounded-xl text-xs">
-          เพิ่มสไลด์และเปิดอ่านเทียบข้างๆ ทันที
+        <button type="submit" id="top-submit-btn" class="sv-btn-primary w-full h-10 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5">
+          <i class="ph ph-check-circle text-sm"></i>
+          <span>บันทึกเรื่องนี้และเปิดอ่าน (เว็บสรุป + สไลด์)</span>
         </button>
       </form>
     </div>

@@ -204,118 +204,158 @@ const StudyVaultSync = (() => {
     const cleanSubjects = [];
     const assetLinksApplied = []; // Track repoPath patches back to caller
 
-    for (const sub of subjectsSnapshot) {
-      const cleanLinks = [];
-      for (const link of sub.links || []) {
-        const cleanLink = {
-          id: link.id,
-          title: link.title,
-          subtitle: link.subtitle || "",
-          type: link.type || "Web App",
-          url: link.url || "",
-          badge: link.badge || "Web App",
-          frameRestricted: Boolean(link.frameRestricted),
-          updatedAt: link.updatedAt || new Date().toISOString().split("T")[0]
-        };
-        if (link.pairedSlideId) cleanLink.pairedSlideId = link.pairedSlideId;
-        if (link.unpairedAuto) cleanLink.unpairedAuto = true;
+    async function publishLinkRecord(sub, link, onStatus) {
+      const cleanLink = {
+        id: link.id,
+        title: link.title,
+        subtitle: link.subtitle || "",
+        type: link.type || "Web App",
+        url: link.url || "",
+        badge: link.badge || "Web App",
+        frameRestricted: Boolean(link.frameRestricted),
+        updatedAt: link.updatedAt || new Date().toISOString().split("T")[0]
+      };
+      if (link.pairedSlideId) cleanLink.pairedSlideId = link.pairedSlideId;
+      if (link.unpairedAuto) cleanLink.unpairedAuto = true;
 
-        if (link.repoPath) {
-          cleanLink.repoPath = link.repoPath;
-          cleanLink.url = link.repoPath;
-          referencedAssets.add(link.repoPath);
-        }
-
-        if (link.idbKey) {
-          const blob = await StudyVaultDB.getBlob(link.idbKey);
-          if (blob instanceof Blob) {
-            if (blob.size > MAX_GITHUB_FILE_BYTES) {
-              throw new Error(`ไฟล์ HTML "${link.title}" ใหญ่เกิน 24MB`);
-            }
-            onStatus(`กำลังอัปโหลด HTML "${link.title}"...`);
-            const path = link.repoPath || `shared-assets/links/${link.id}.html`;
-            const b64 = await blobToBase64(blob);
-            const blobSha = await createGitBlob(owner, repo, token, b64, "base64");
-            treeEntries.push({ path, mode: "100644", type: "blob", sha: blobSha });
-            cleanLink.repoPath = path;
-            cleanLink.url = path;
-            cleanLink.type = "Embedded HTML";
-            cleanLink.frameRestricted = false;
-            referencedAssets.add(path);
-            assetLinksApplied.push({ kind: "link", subId: sub.id, id: link.id, patch: { repoPath: path, url: path } });
-          }
-        }
-        cleanLinks.push(cleanLink);
+      if (link.repoPath) {
+        cleanLink.repoPath = link.repoPath;
+        cleanLink.url = link.repoPath;
+        referencedAssets.add(link.repoPath);
       }
 
-      const cleanSlides = [];
-      for (const sl of sub.slides || []) {
-        const cleanSlide = {
-          id: sl.id,
-          title: sl.title,
-          type: sl.type,
-          updatedAt: sl.updatedAt || new Date().toISOString().split("T")[0]
-        };
-        if (sl.unpairedAuto) cleanSlide.unpairedAuto = true;
-        if (sl.url) cleanSlide.url = sl.url;
-        if (Array.isArray(sl.urls)) cleanSlide.urls = [...sl.urls];
-        if (sl.repoPath) {
-          cleanSlide.repoPath = sl.repoPath;
-          cleanSlide.url = sl.repoPath;
-          referencedAssets.add(sl.repoPath);
+      if (link.idbKey) {
+        const blob = await StudyVaultDB.getBlob(link.idbKey);
+        if (blob instanceof Blob) {
+          if (blob.size > MAX_GITHUB_FILE_BYTES) {
+            throw new Error(`ไฟล์ HTML "${link.title}" ใหญ่เกิน 24MB`);
+          }
+          onStatus(`กำลังอัปโหลด HTML "${link.title}"...`);
+          const path = link.repoPath || `shared-assets/links/${link.id}.html`;
+          const b64 = await blobToBase64(blob);
+          const blobSha = await createGitBlob(owner, repo, token, b64, "base64");
+          treeEntries.push({ path, mode: "100644", type: "blob", sha: blobSha });
+          cleanLink.repoPath = path;
+          cleanLink.url = path;
+          cleanLink.type = "Embedded HTML";
+          cleanLink.frameRestricted = false;
+          referencedAssets.add(path);
+          assetLinksApplied.push({ kind: "link", subId: sub.id, id: link.id, patch: { repoPath: path, url: path } });
         }
-        if (Array.isArray(sl.repoPaths)) {
-          cleanSlide.repoPaths = [...sl.repoPaths];
-          cleanSlide.urls = [...sl.repoPaths];
-          sl.repoPaths.forEach(p => referencedAssets.add(p));
-        }
+      }
+      return cleanLink;
+    }
 
-        if (sl.type === "pdf" && sl.idbKey) {
-          const blob = await StudyVaultDB.getBlob(sl.idbKey);
-          if (blob instanceof Blob) {
-            if (blob.size > MAX_GITHUB_FILE_BYTES) {
-              throw new Error(`ไฟล์ PDF "${sl.title}" ใหญ่เกิน 24MB (GitHub API จำกัดไม่เกิน ~25MB)`);
+    async function publishSlideRecord(sub, sl, onStatus) {
+      const cleanSlide = {
+        id: sl.id,
+        title: sl.title,
+        type: sl.type,
+        updatedAt: sl.updatedAt || new Date().toISOString().split("T")[0]
+      };
+      if (sl.unpairedAuto) cleanSlide.unpairedAuto = true;
+      if (sl.url) cleanSlide.url = sl.url;
+      if (Array.isArray(sl.urls)) cleanSlide.urls = [...sl.urls];
+      if (sl.repoPath) {
+        cleanSlide.repoPath = sl.repoPath;
+        cleanSlide.url = sl.repoPath;
+        referencedAssets.add(sl.repoPath);
+      }
+      if (Array.isArray(sl.repoPaths)) {
+        cleanSlide.repoPaths = [...sl.repoPaths];
+        cleanSlide.urls = [...sl.repoPaths];
+        sl.repoPaths.forEach(p => referencedAssets.add(p));
+      }
+
+      if (sl.type === "pdf" && sl.idbKey) {
+        const blob = await StudyVaultDB.getBlob(sl.idbKey);
+        if (blob instanceof Blob) {
+          if (blob.size > MAX_GITHUB_FILE_BYTES) {
+            throw new Error(`ไฟล์ PDF "${sl.title}" ใหญ่เกิน 24MB (GitHub API จำกัดไม่เกิน ~25MB)`);
+          }
+          onStatus(`กำลังอัปโหลดสไลด์ PDF "${sl.title}" (${(blob.size / (1024 * 1024)).toFixed(1)} MB)...`);
+          const path = sl.repoPath || `shared-assets/slides/${sl.id}.pdf`;
+          const b64 = await blobToBase64(blob);
+          const blobSha = await createGitBlob(owner, repo, token, b64, "base64");
+          treeEntries.push({ path, mode: "100644", type: "blob", sha: blobSha });
+          cleanSlide.repoPath = path;
+          cleanSlide.url = path;
+          referencedAssets.add(path);
+          assetLinksApplied.push({ kind: "slide", subId: sub.id, id: sl.id, patch: { repoPath: path, url: path } });
+        }
+      } else if (sl.type === "images" && sl.idbKey) {
+        const blobs = await StudyVaultDB.getBlob(sl.idbKey);
+        if (Array.isArray(blobs) && blobs.length > 0) {
+          const uploadedPaths = [];
+          for (let idx = 0; idx < blobs.length; idx++) {
+            const imgBlob = blobs[idx];
+            if (!(imgBlob instanceof Blob)) continue;
+            if (imgBlob.size > MAX_GITHUB_FILE_BYTES) {
+              throw new Error(`รูปสไลด์แผ่นที่ ${idx + 1} ใน "${sl.title}" ใหญ่เกิน 24MB`);
             }
-            onStatus(`กำลังอัปโหลดสไลด์ PDF "${sl.title}" (${(blob.size / (1024 * 1024)).toFixed(1)} MB)...`);
-            const path = sl.repoPath || `shared-assets/slides/${sl.id}.pdf`;
-            const b64 = await blobToBase64(blob);
-            const blobSha = await createGitBlob(owner, repo, token, b64, "base64");
-            treeEntries.push({ path, mode: "100644", type: "blob", sha: blobSha });
-            cleanSlide.repoPath = path;
-            cleanSlide.url = path;
+            const ext = sanitizeExtFromBlob(imgBlob, "png");
+            const path = (sl.repoPaths && sl.repoPaths[idx]) || `shared-assets/slides/${sl.id}-${idx + 1}.${ext}`;
+            if (!existingSharedAssets.has(path)) {
+              onStatus(`กำลังอัปโหลดสไลด์ "${sl.title}" (${idx + 1}/${blobs.length})...`);
+              const b64 = await blobToBase64(imgBlob);
+              const blobSha = await createGitBlob(owner, repo, token, b64, "base64");
+              treeEntries.push({ path, mode: "100644", type: "blob", sha: blobSha });
+            }
+            uploadedPaths.push(path);
             referencedAssets.add(path);
-            assetLinksApplied.push({ kind: "slide", subId: sub.id, id: sl.id, patch: { repoPath: path, url: path } });
           }
-        } else if (sl.type === "images" && sl.idbKey) {
-          const blobs = await StudyVaultDB.getBlob(sl.idbKey);
-          if (Array.isArray(blobs) && blobs.length > 0) {
-            const uploadedPaths = [];
-            for (let idx = 0; idx < blobs.length; idx++) {
-              const imgBlob = blobs[idx];
-              if (!(imgBlob instanceof Blob)) continue;
-              if (imgBlob.size > MAX_GITHUB_FILE_BYTES) {
-                throw new Error(`รูปสไลด์แผ่นที่ ${idx + 1} ใน "${sl.title}" ใหญ่เกิน 24MB`);
-              }
-              const ext = sanitizeExtFromBlob(imgBlob, "png");
-              const path = (sl.repoPaths && sl.repoPaths[idx]) || `shared-assets/slides/${sl.id}-${idx + 1}.${ext}`;
-              if (!existingSharedAssets.has(path)) {
-                onStatus(`กำลังอัปโหลดสไลด์ "${sl.title}" (${idx + 1}/${blobs.length})...`);
-                const b64 = await blobToBase64(imgBlob);
-                const blobSha = await createGitBlob(owner, repo, token, b64, "base64");
-                treeEntries.push({ path, mode: "100644", type: "blob", sha: blobSha });
-              }
-              uploadedPaths.push(path);
-              referencedAssets.add(path);
-            }
-            if (uploadedPaths.length > 0) {
-              cleanSlide.repoPaths = uploadedPaths;
-              cleanSlide.urls = uploadedPaths;
-              assetLinksApplied.push({ kind: "slide", subId: sub.id, id: sl.id, patch: { repoPaths: uploadedPaths, urls: uploadedPaths } });
-            }
+          if (uploadedPaths.length > 0) {
+            cleanSlide.repoPaths = uploadedPaths;
+            cleanSlide.urls = uploadedPaths;
+            assetLinksApplied.push({ kind: "slide", subId: sub.id, id: sl.id, patch: { repoPaths: uploadedPaths, urls: uploadedPaths } });
           }
         }
+      }
+      return cleanSlide;
+    }
 
-        cleanSubjects && cleanSlides.push(cleanSlide);
+    for (const sub of subjectsSnapshot) {
+      const cleanTopics = [];
+      if (Array.isArray(sub.topics) && sub.topics.length > 0) {
+        for (const topic of sub.topics) {
+          const cleanLink = topic.link ? await publishLinkRecord(sub, topic.link, onStatus) : null;
+          const cleanTopicSlides = [];
+          for (const sl of topic.slides || []) {
+            cleanTopicSlides.push(await publishSlideRecord(sub, sl, onStatus));
+          }
+          cleanTopics.push({
+            id: topic.id,
+            title: topic.title,
+            subtitle: topic.subtitle || "",
+            updatedAt: topic.updatedAt || new Date().toISOString().split("T")[0],
+            createdAt: topic.createdAt || Date.now(),
+            link: cleanLink,
+            slides: cleanTopicSlides
+          });
+        }
+      } else {
+        for (const link of sub.links || []) {
+          const cleanLink = await publishLinkRecord(sub, link, onStatus);
+          cleanTopics.push({
+            id: "top-" + cleanLink.id,
+            title: cleanLink.title,
+            subtitle: cleanLink.subtitle || "",
+            updatedAt: cleanLink.updatedAt,
+            link: cleanLink,
+            slides: []
+          });
+        }
+        for (const sl of sub.slides || []) {
+          const cleanSlide = await publishSlideRecord(sub, sl, onStatus);
+          cleanTopics.push({
+            id: "top-" + cleanSlide.id,
+            title: cleanSlide.title,
+            subtitle: "",
+            updatedAt: cleanSlide.updatedAt,
+            link: null,
+            slides: [cleanSlide]
+          });
+        }
       }
 
       cleanSubjects.push({
@@ -327,8 +367,7 @@ const StudyVaultSync = (() => {
         icon: sub.icon || "📘",
         accent: sub.accent || "from-indigo-500 to-purple-500",
         lastUpdated: sub.lastUpdated || new Date().toISOString().split("T")[0],
-        links: cleanLinks,
-        slides: cleanSlides
+        topics: cleanTopics
       });
     }
 
