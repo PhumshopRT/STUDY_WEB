@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-26T18:17:10.996Z",
+  "updatedAt": "2026-11-26T19:03:09.289Z",
   "subjects": [
     {
       "id": "sub-1795656848257",
@@ -24,6 +24,35 @@
       "lastUpdated": "2026-11-26",
       "topics": [
         {
+          "id": "top-1795716970245",
+          "title": "General X-ray",
+          "subtitle": "",
+          "updatedAt": "2026-11-26",
+          "createdAt": 1795719784636,
+          "link": {
+            "id": "lnk-1795719784636",
+            "title": "General X-ray",
+            "subtitle": "",
+            "type": "Embedded HTML",
+            "url": "shared-assets/links/lnk-1795719784636.html",
+            "badge": "HTML ในตัว",
+            "frameRestricted": false,
+            "updatedAt": "2026-11-26",
+            "externalUrl": "https://chat.qwen.ai/s/deploy/t_2fef0b5e-e317-46b7-9951-3c1898c8c074",
+            "repoPath": "shared-assets/links/lnk-1795719784636.html"
+          },
+          "slides": [
+            {
+              "id": "sl-1795716970224",
+              "title": "General X-ray_2026",
+              "type": "pdf",
+              "updatedAt": "2026-11-26",
+              "url": "shared-assets/slides/sl-1795716970224.pdf",
+              "repoPath": "shared-assets/slides/sl-1795716970224.pdf"
+            }
+          ]
+        },
+        {
           "id": "top-1795717025278",
           "title": "Radiographic",
           "subtitle": "",
@@ -36,26 +65,8 @@
               "title": "Radiographic_Positioning_Course_Orientation",
               "type": "pdf",
               "updatedAt": "2026-11-26",
-              "repoPath": "shared-assets/slides/sl-1795717025269.pdf",
-              "url": "shared-assets/slides/sl-1795717025269.pdf"
-            }
-          ]
-        },
-        {
-          "id": "top-1795716970245",
-          "title": "General X-ray",
-          "subtitle": "",
-          "updatedAt": "2026-11-26",
-          "createdAt": 1795716970245,
-          "link": null,
-          "slides": [
-            {
-              "id": "sl-1795716970224",
-              "title": "General X-ray_2026",
-              "type": "pdf",
-              "updatedAt": "2026-11-26",
-              "url": "shared-assets/slides/sl-1795716970224.pdf",
-              "repoPath": "shared-assets/slides/sl-1795716970224.pdf"
+              "url": "shared-assets/slides/sl-1795717025269.pdf",
+              "repoPath": "shared-assets/slides/sl-1795717025269.pdf"
             }
           ]
         }
