@@ -636,6 +636,14 @@ document.addEventListener("DOMContentLoaded", () => {
     return "";
   }
 
+  function toHtmlSafeBlobUrl(blob, item) {
+    const isHtml = isEmbeddedHtmlLink(item) || String(blob?.type || "").includes("html");
+    const typed = (isHtml && !String(blob?.type || "").includes("html"))
+      ? new Blob([blob], { type: "text/html; charset=utf-8" })
+      : blob;
+    return URL.createObjectURL(typed);
+  }
+
   // Cached Blob Resolver (supports both local IDB blobs & shared GitHub assets)
   async function resolveResourceUrl(item) {
     if (!item) return "";
@@ -644,7 +652,7 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         const data = await StudyVaultDB.getBlob(item.idbKey);
         if (data instanceof Blob) {
-          const url = URL.createObjectURL(data);
+          const url = toHtmlSafeBlobUrl(data, item);
           blobUrlCache.set(item.idbKey, url);
           return url;
         }
@@ -658,7 +666,7 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         const cached = await StudyVaultDB.getBlob(cacheKey);
         if (cached instanceof Blob) {
-          const url = URL.createObjectURL(cached);
+          const url = toHtmlSafeBlobUrl(cached, item);
           blobUrlCache.set(cacheKey, url);
           return url;
         }
@@ -1885,6 +1893,9 @@ document.addEventListener("DOMContentLoaded", () => {
     activePdfDoc = null;
     pdfBuildToken++;
     clearTimeout(iframeTimeoutHandle);
+    clearInterval(iframePollHandle);
+    iframeLoadToken++;
+    stageIframe.removeAttribute("srcdoc");
     stageIframe.src = "about:blank";
     slideIframe.src = "about:blank";
     if (updateHash) history.pushState("", document.title, window.location.pathname + window.location.search);
@@ -2001,6 +2012,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function showEmptyLinkStage() {
     clearTimeout(iframeTimeoutHandle);
+    clearInterval(iframePollHandle);
+    iframeLoadToken++;
+    stageIframe.removeAttribute("srcdoc");
+    stageIframe.src = "about:blank";
     stageLoader.classList.add("hidden");
     stageTimeoutBar.classList.add("hidden");
     stageRestrictedView.classList.add("hidden");
@@ -2009,6 +2024,11 @@ document.addEventListener("DOMContentLoaded", () => {
     stageUrlText.textContent = "ไม่มีเว็บสรุป";
     stageExternalBtn.classList.add("hidden");
   }
+
+  let iframeLoadToken = 0;
+  let iframePollHandle = null;
+  let lastStageUrl = "";
+  let lastStageLink = null;
 
   // 7. Select Link + Smart Embedding
   window.selectLink = async function(linkId) {
@@ -2024,6 +2044,8 @@ document.addEventListener("DOMContentLoaded", () => {
     stageExternalBtn.classList.remove("hidden");
 
     const resolvedUrl = await resolveResourceUrl(link);
+    if (activeLinkId !== linkId) return;
+
     const extUrl = getLinkExternalUrl(link);
     const isHtml = isEmbeddedHtmlLink(link);
     stageUrlText.textContent = extUrl || (isHtml ? "embedded-html://summary" : resolvedUrl);
@@ -2038,6 +2060,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (isRestricted) {
       clearTimeout(iframeTimeoutHandle);
+      clearInterval(iframePollHandle);
+      iframeLoadToken++;
       stageLoader.classList.add("hidden");
       stageIframeWrapper.classList.add("hidden");
       stageRestrictedView.classList.remove("hidden");
@@ -2049,28 +2073,150 @@ document.addEventListener("DOMContentLoaded", () => {
       restrictedLinkName.textContent = link.title;
       restrictedOpenBtn.href = resolvedUrl;
     } else {
-      loadStageIframe(resolvedUrl);
+      loadStageIframe(resolvedUrl, link);
     }
   };
 
-  function loadStageIframe(url) {
+  async function tryFallbackHtmlSrcdoc(url, link, token) {
+    if (token !== iframeLoadToken) return false;
+    try {
+      let htmlText = "";
+      const keyCandidates = [link?.idbKey, link?.id ? ("cached-link-" + link.id) : ""].filter(Boolean);
+      for (const k of keyCandidates) {
+        const blob = await StudyVaultDB.getBlob(k).catch(() => null);
+        if (blob instanceof Blob) {
+          htmlText = await blob.text();
+          if (htmlText && htmlText.trim().length > 20) break;
+        }
+      }
+      if (!htmlText && link) {
+        const rel = link.repoPath || (String(link.url || "").startsWith("shared-assets/") ? link.url : "");
+        if (rel) {
+          const cfg = typeof StudyVaultSync !== "undefined" ? StudyVaultSync.getConfig() : { owner: "PhumshopRT", repo: "STUDY_WEB", branch: "main" };
+          const candidates = [rel, `https://raw.githubusercontent.com/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/${encodeURIComponent(cfg.branch)}/${rel}?t=${Date.now()}`];
+          for (const candidate of candidates) {
+            try {
+              const res = await fetch(candidate, { cache: "no-store" });
+              if (res.ok) {
+                const txt = await res.text();
+                if (txt && txt.trim().length > 20) {
+                  htmlText = txt;
+                  break;
+                }
+              }
+            } catch {}
+          }
+        }
+      }
+      if (token !== iframeLoadToken || !htmlText) return false;
+      stageIframe.srcdoc = htmlText;
+      stageLoader.classList.add("hidden");
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function loadStageIframe(url, link = null, forceReload = false) {
+    const token = ++iframeLoadToken;
+    lastStageUrl = url;
+    lastStageLink = link;
     clearTimeout(iframeTimeoutHandle);
+    clearInterval(iframePollHandle);
+
     stageRestrictedView.classList.add("hidden");
     stageEmptyView.classList.add("hidden");
     stageTimeoutBar.classList.add("hidden");
     stageIframeWrapper.classList.remove("hidden");
     stageLoader.classList.remove("hidden");
-    stageIframe.src = url;
 
-    stageIframe.onload = () => {
+    const isExternalHttp = String(url || "").startsWith("http");
+    const isEmbeddedHtml = isEmbeddedHtmlLink(link) || String(url || "").startsWith("blob:") || String(url || "").startsWith("shared-assets/");
+
+    const finishLoading = () => {
+      if (token !== iframeLoadToken) return;
       clearTimeout(iframeTimeoutHandle);
+      clearInterval(iframePollHandle);
       stageLoader.classList.add("hidden");
     };
 
-    iframeTimeoutHandle = setTimeout(() => {
+    stageIframe.onload = () => {
+      if (token !== iframeLoadToken) return;
+      try {
+        const doc = stageIframe.contentDocument;
+        if (doc && /page not found/i.test(doc.title || "") && isEmbeddedHtml) {
+          clearInterval(iframePollHandle);
+          tryFallbackHtmlSrcdoc(url, link, token);
+          return;
+        }
+      } catch {}
+      finishLoading();
+    };
+
+    stageIframe.onerror = () => {
+      if (token !== iframeLoadToken) return;
+      if (isEmbeddedHtml) tryFallbackHtmlSrcdoc(url, link, token);
+      else finishLoading();
+    };
+
+    // Reveal immediately as soon as DOM becomes interactive (don't block UI on slow CDN stylesheets/fonts!)
+    if (!isExternalHttp) {
+      let ticks = 0;
+      iframePollHandle = setInterval(() => {
+        if (token !== iframeLoadToken) {
+          clearInterval(iframePollHandle);
+          return;
+        }
+        ticks++;
+        try {
+          const doc = stageIframe.contentDocument;
+          if (doc && doc.location && doc.location.href !== "about:blank") {
+            if (/page not found/i.test(doc.title || "") && isEmbeddedHtml) {
+              clearInterval(iframePollHandle);
+              tryFallbackHtmlSrcdoc(url, link, token);
+              return;
+            }
+            if ((doc.readyState === "interactive" || doc.readyState === "complete") && doc.body && doc.body.children.length > 0) {
+              finishLoading();
+              return;
+            }
+          }
+        } catch {}
+        if (ticks >= 40) clearInterval(iframePollHandle);
+      }, 60);
+    }
+
+    const assignSrc = () => {
+      if (token !== iframeLoadToken) return;
+      stageIframe.removeAttribute("srcdoc");
+      stageIframe.src = url;
+    };
+
+    if (forceReload || stageIframe.src === url) {
+      stageIframe.removeAttribute("srcdoc");
+      stageIframe.src = "about:blank";
+      requestAnimationFrame(() => requestAnimationFrame(assignSrc));
+    } else {
+      assignSrc();
+    }
+
+    iframeTimeoutHandle = setTimeout(async () => {
+      if (token !== iframeLoadToken) return;
+      clearInterval(iframePollHandle);
+      if (isEmbeddedHtml) {
+        let hasRenderedDom = false;
+        try {
+          const doc = stageIframe.contentDocument;
+          hasRenderedDom = Boolean(doc && doc.location?.href !== "about:blank" && doc.body && doc.body.children.length > 0 && !/page not found/i.test(doc.title || ""));
+        } catch {}
+        if (!hasRenderedDom) {
+          await tryFallbackHtmlSrcdoc(url, link, token);
+        }
+      }
+      if (token !== iframeLoadToken) return;
       stageLoader.classList.add("hidden");
-      if (url.startsWith("http")) stageTimeoutBar.classList.remove("hidden");
-    }, 6500);
+      if (isExternalHttp) stageTimeoutBar.classList.remove("hidden");
+    }, isExternalHttp ? 6500 : 2500);
   }
 
   window.openDualDesktopWindows = function() {
@@ -2108,7 +2254,9 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   stageRefreshBtn.addEventListener("click", () => {
-    if (!stageIframeWrapper.classList.contains("hidden")) loadStageIframe(stageIframe.src);
+    if (!stageIframeWrapper.classList.contains("hidden") && lastStageUrl) {
+      loadStageIframe(lastStageUrl, lastStageLink, true);
+    }
   });
 
   window.setViewport = function(mode) {
