@@ -3022,9 +3022,50 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }, { passive: true });
 
-  // iPad 2-Finger Pinch-to-Zoom & 2-Finger Pan + Trackpad Pinch Support
+  // iPad 2-Finger Pinch-to-Zoom & 2-Finger Pan + Trackpad Pinch Support (Zero-Warp Anchored Engine)
   let pinchState = null;
   let wheelZoomTimer = null;
+
+  function capturePdfScrollAnchor(screenX = null, screenY = null) {
+    const cRect = pdfPagesContainer.getBoundingClientRect();
+    const targetX = screenX !== null ? screenX : (cRect.left + cRect.width / 2);
+    const targetY = screenY !== null ? screenY : (cRect.top + cRect.height / 2);
+    const slots = Array.from(pdfPagesContainer.querySelectorAll(".pdf-page-slot"));
+    if (slots.length === 0) return null;
+
+    let bestSlot = slots[0];
+    let bestDist = Infinity;
+    for (const s of slots) {
+      const r = s.getBoundingClientRect();
+      if (targetY >= r.top && targetY <= r.bottom) {
+        bestSlot = s;
+        bestDist = 0;
+        break;
+      }
+      const dist = targetY < r.top ? (r.top - targetY) : (targetY - r.bottom);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestSlot = s;
+      }
+    }
+    const sRect = bestSlot.getBoundingClientRect();
+    return {
+      slot: bestSlot,
+      fx: (targetX - sRect.left) / Math.max(1, sRect.width),
+      fy: (targetY - sRect.top) / Math.max(1, sRect.height),
+      screenX: targetX,
+      screenY: targetY
+    };
+  }
+
+  function applyPdfScrollAnchor(anchor) {
+    if (!anchor || !anchor.slot || !anchor.slot.isConnected) return;
+    const newRect = anchor.slot.getBoundingClientRect();
+    const curPtX = newRect.left + anchor.fx * newRect.width;
+    const curPtY = newRect.top + anchor.fy * newRect.height;
+    pdfPagesContainer.scrollLeft += (curPtX - anchor.screenX);
+    pdfPagesContainer.scrollTop += (curPtY - anchor.screenY);
+  }
 
   function getTouchPairMetrics(t1, t2) {
     return {
@@ -3042,19 +3083,23 @@ document.addEventListener("DOMContentLoaded", () => {
       pdfIsPinching = true;
       const stage = document.getElementById("pdf-zoom-stage");
       const metrics = getTouchPairMetrics(e.touches[0], e.touches[1]);
-      const rect = pdfPagesContainer.getBoundingClientRect();
-      const localX = metrics.midX - rect.left;
-      const localY = metrics.midY - rect.top;
+      if (stage) {
+        stage.style.transform = "";
+        stage.style.willChange = "transform";
+      }
+      const stRect = stage ? stage.getBoundingClientRect() : pdfPagesContainer.getBoundingClientRect();
+      const anchor = capturePdfScrollAnchor(metrics.midX, metrics.midY);
       pinchState = {
         startDist: metrics.dist,
         startZoom: pdfZoom,
         targetZoom: pdfZoom,
-        startScrollLeft: pdfPagesContainer.scrollLeft,
-        startScrollTop: pdfPagesContainer.scrollTop,
-        contentX: pdfPagesContainer.scrollLeft + localX,
-        contentY: pdfPagesContainer.scrollTop + localY,
-        lastLocalX: localX,
-        lastLocalY: localY,
+        stageStartLeft: stRect.left,
+        stageStartTop: stRect.top,
+        relX: metrics.midX - stRect.left,
+        relY: metrics.midY - stRect.top,
+        lastMidX: metrics.midX,
+        lastMidY: metrics.midY,
+        anchor,
         stage
       };
     }
@@ -3064,21 +3109,17 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!pdfIsPinching || !pinchState || e.touches.length !== 2) return;
     e.preventDefault();
     const metrics = getTouchPairMetrics(e.touches[0], e.touches[1]);
-    const rect = pdfPagesContainer.getBoundingClientRect();
-    const curLocalX = metrics.midX - rect.left;
-    const curLocalY = metrics.midY - rect.top;
     const nextZoom = Math.max(0.6, Math.min(3.0, pinchState.startZoom * (metrics.dist / pinchState.startDist)));
     const scaleFactor = nextZoom / pinchState.startZoom;
 
     pinchState.targetZoom = nextZoom;
-    pinchState.lastLocalX = curLocalX;
-    pinchState.lastLocalY = curLocalY;
+    pinchState.lastMidX = metrics.midX;
+    pinchState.lastMidY = metrics.midY;
 
     if (pinchState.stage) {
-      const tx = (pinchState.startScrollLeft + curLocalX) - pinchState.contentX * scaleFactor;
-      const ty = (pinchState.startScrollTop + curLocalY) - pinchState.contentY * scaleFactor;
+      const tx = metrics.midX - pinchState.stageStartLeft - pinchState.relX * scaleFactor;
+      const ty = metrics.midY - pinchState.stageStartTop - pinchState.relY * scaleFactor;
       pinchState.stage.style.transformOrigin = "0 0";
-      pinchState.stage.style.willChange = "transform";
       pinchState.stage.style.transform = `translate3d(${tx}px, ${ty}px, 0) scale(${scaleFactor})`;
     }
     pdfZoomLabel.textContent = `${Math.round(nextZoom * 100)}%`;
@@ -3090,21 +3131,20 @@ document.addEventListener("DOMContentLoaded", () => {
     pinchState = null;
     pdfIsPinching = false;
 
-    const scaleFactor = state.targetZoom / state.startZoom;
+    const finalAnchor = state.anchor
+      ? { ...state.anchor, screenX: state.lastMidX, screenY: state.lastMidY }
+      : null;
+
     if (state.stage) {
       state.stage.style.transform = "";
       state.stage.style.willChange = "";
     }
 
     if (Math.abs(state.targetZoom - state.startZoom) > 0.025) {
-      const targetLeft = Math.max(0, state.contentX * scaleFactor - state.lastLocalX);
-      const targetTop = Math.max(0, state.contentY * scaleFactor - state.lastLocalY);
       pdfZoom = state.targetZoom;
-      await buildPdfPageSlots(true, { left: targetLeft, top: targetTop });
+      await buildPdfPageSlots(true, finalAnchor);
     } else {
-      const panLeft = Math.max(0, state.contentX - state.lastLocalX);
-      const panTop = Math.max(0, state.contentY - state.lastLocalY);
-      pdfPagesContainer.scrollTo({ left: panLeft, top: panTop });
+      applyPdfScrollAnchor(finalAnchor);
       pdfZoomLabel.textContent = `${Math.round(pdfZoom * 100)}%`;
     }
   }
@@ -3119,11 +3159,14 @@ document.addEventListener("DOMContentLoaded", () => {
   pdfPagesContainer.addEventListener("wheel", e => {
     if (!e.ctrlKey || !activePdfDoc || slidePdfViewer.classList.contains("hidden")) return;
     e.preventDefault();
+    const anchor = capturePdfScrollAnchor(e.clientX, e.clientY);
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
     pdfZoom = Math.max(0.6, Math.min(3.0, pdfZoom + delta));
-    pdfZoomLabel.textContent = `${Math.round(pdfZoom * 100)}%`;
+    rescalePdfSlotsInPlace(Math.max(260, pdfPagesContainer.clientWidth - 32), anchor);
     clearTimeout(wheelZoomTimer);
-    wheelZoomTimer = setTimeout(() => buildPdfPageSlots(true), 80);
+    wheelZoomTimer = setTimeout(() => {
+      if (activePdfDoc) refreshVisiblePdfCanvases(Math.max(260, pdfPagesContainer.clientWidth - 32), ++pdfBuildToken);
+    }, 90);
   }, { passive: false });
 
   async function renderPdfSlide(idbKey, fallbackUrl, slideId, slideTitle) {
@@ -3195,27 +3238,74 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  async function buildPdfPageSlots(preservePage = false, customScrollTarget = null) {
+  function rescalePdfSlotsInPlace(containerW, anchor = null) {
+    const stage = document.getElementById("pdf-zoom-stage");
+    if (!stage) return false;
+    const slots = stage.querySelectorAll(".pdf-page-slot");
+    if (slots.length === 0) return false;
+
+    const targetAnchor = anchor || capturePdfScrollAnchor();
+    pdfZoomLabel.textContent = `${Math.round(pdfZoom * 100)}%`;
+
+    slots.forEach(slot => {
+      const baseW = Number(slot.dataset.baseW) || 1;
+      const baseH = Number(slot.dataset.baseH) || 1;
+      slot.style.width = `${Math.floor(containerW * pdfZoom)}px`;
+      slot.style.height = `${Math.floor((containerW * pdfZoom) * (baseH / baseW))}px`;
+    });
+
+    applyPdfScrollAnchor(targetAnchor);
+    updatePdfPageCounterFromScroll();
+    return true;
+  }
+
+  function refreshVisiblePdfCanvases(containerW, buildToken) {
+    if (!activePdfDoc || buildToken !== pdfBuildToken) return;
+    const cRect = pdfPagesContainer.getBoundingClientRect();
+    const expectedKey = `${containerW}:${pdfZoom.toFixed(2)}`;
+    const slots = pdfPagesContainer.querySelectorAll(".pdf-page-slot");
+    for (const slot of slots) {
+      const r = slot.getBoundingClientRect();
+      if (r.bottom >= cRect.top - 240 && r.top <= cRect.bottom + 240) {
+        if (slot.dataset.rendered === "false") {
+          renderSinglePdfCanvas(slot, Number(slot.dataset.pageNum), containerW, buildToken, false);
+        } else if (slot.dataset.rendered === "true" && slot.dataset.renderedKey !== expectedKey && slot.dataset.renderingKey !== expectedKey) {
+          renderSinglePdfCanvas(slot, Number(slot.dataset.pageNum), containerW, buildToken, true);
+        }
+      }
+    }
+  }
+
+  async function buildPdfPageSlots(preservePage = false, customAnchor = null) {
     if (!activePdfDoc) return;
     const rawW = pdfPagesContainer.clientWidth;
     if (rawW < 50) return;
 
     const buildToken = ++pdfBuildToken;
     lastPdfContainerW = rawW;
+    const containerW = Math.max(260, rawW - 32);
 
-    let anchorPage = preservePage ? pdfCurrPage : 1;
-    let anchorFracY = 0;
-    let anchorFracX = 0.5;
-    if (preservePage && !customScrollTarget) {
-      const prevSlot = pdfPagesContainer.querySelector(`.pdf-page-slot[data-page-num="${anchorPage}"]`);
-      if (prevSlot) {
-        const slotH = Math.max(1, prevSlot.offsetHeight);
-        anchorFracY = Math.max(0, Math.min(1, (pdfPagesContainer.scrollTop - prevSlot.offsetTop + 12) / slotH));
-        const slotW = Math.max(1, prevSlot.offsetWidth);
-        if (pdfPagesContainer.scrollWidth > pdfPagesContainer.clientWidth) {
-          anchorFracX = (pdfPagesContainer.scrollLeft + pdfPagesContainer.clientWidth / 2 - prevSlot.offsetLeft) / slotW;
+    // Zero-flash in-place rescale whenever stage already exists (pinch, +/- buttons, fullscreen expand)
+    if (preservePage && document.getElementById("pdf-zoom-stage")?.querySelector(".pdf-page-slot")) {
+      rescalePdfSlotsInPlace(containerW, customAnchor);
+      if (pdfObserver) pdfObserver.disconnect();
+      pdfObserver = new IntersectionObserver(entries => {
+        if (buildToken !== pdfBuildToken) return;
+        const expectedKey = `${containerW}:${pdfZoom.toFixed(2)}`;
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const slot = entry.target;
+            if (slot.dataset.rendered === "false") {
+              renderSinglePdfCanvas(slot, Number(slot.dataset.pageNum), containerW, buildToken, false);
+            } else if (slot.dataset.rendered === "true" && slot.dataset.renderedKey !== expectedKey && slot.dataset.renderingKey !== expectedKey) {
+              renderSinglePdfCanvas(slot, Number(slot.dataset.pageNum), containerW, buildToken, true);
+            }
+          }
         }
-      }
+      }, { root: pdfPagesContainer, rootMargin: "240px 0px", threshold: 0.05 });
+      pdfPagesContainer.querySelectorAll(".pdf-page-slot").forEach(el => pdfObserver.observe(el));
+      refreshVisiblePdfCanvases(containerW, buildToken);
+      return;
     }
 
     const firstPage = await activePdfDoc.getPage(1);
@@ -3224,14 +3314,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (pdfObserver) pdfObserver.disconnect();
 
     const numPages = activePdfDoc.numPages;
-    anchorPage = Math.max(1, Math.min(numPages, anchorPage));
+    const anchorPage = preservePage ? Math.max(1, Math.min(numPages, pdfCurrPage)) : 1;
 
     pdfTotalPagesEl.textContent = String(numPages).padStart(2, "0");
     pdfCurrPage = anchorPage;
     pdfCurrPageEl.textContent = String(anchorPage).padStart(2, "0");
     pdfZoomLabel.textContent = `${Math.round(pdfZoom * 100)}%`;
 
-    const containerW = Math.max(260, rawW - 32);
     const firstVp = firstPage.getViewport({ scale: 1 });
     const defaultScale = (containerW / firstVp.width) * pdfZoom;
     const defaultVp = firstPage.getViewport({ scale: defaultScale });
@@ -3252,6 +3341,8 @@ document.addEventListener("DOMContentLoaded", () => {
       wrap.className = "pdf-page-slot relative rounded-xl overflow-hidden bg-white shadow-md border border-[var(--line)] flex-shrink-0";
       wrap.style.width = `${Math.floor(defaultVp.width)}px`;
       wrap.style.height = `${Math.floor(defaultVp.height)}px`;
+      wrap.dataset.baseW = String(firstVp.width);
+      wrap.dataset.baseH = String(firstVp.height);
       wrap.dataset.pageNum = String(i);
       wrap.dataset.rendered = "false";
 
@@ -3268,11 +3359,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     pdfObserver = new IntersectionObserver(entries => {
       if (buildToken !== pdfBuildToken) return;
+      const expectedKey = `${containerW}:${pdfZoom.toFixed(2)}`;
       for (const entry of entries) {
         if (entry.isIntersecting) {
           const slot = entry.target;
           if (slot.dataset.rendered === "false") {
-            renderSinglePdfCanvas(slot, Number(slot.dataset.pageNum), containerW, buildToken);
+            renderSinglePdfCanvas(slot, Number(slot.dataset.pageNum), containerW, buildToken, false);
+          } else if (slot.dataset.rendered === "true" && slot.dataset.renderedKey !== expectedKey && slot.dataset.renderingKey !== expectedKey) {
+            renderSinglePdfCanvas(slot, Number(slot.dataset.pageNum), containerW, buildToken, true);
           }
         }
       }
@@ -3280,29 +3374,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
     stage.querySelectorAll(".pdf-page-slot").forEach(el => pdfObserver.observe(el));
 
-    if (customScrollTarget) {
-      pdfPagesContainer.scrollLeft = customScrollTarget.left;
-      pdfPagesContainer.scrollTop = customScrollTarget.top;
+    if (customAnchor) {
+      applyPdfScrollAnchor(customAnchor);
     } else if (preservePage) {
       const targetEl = stage.querySelector(`.pdf-page-slot[data-page-num="${anchorPage}"]`);
-      if (targetEl) {
-        pdfPagesContainer.scrollTop = Math.max(0, targetEl.offsetTop - 12 + targetEl.offsetHeight * anchorFracY);
-        if (pdfPagesContainer.scrollWidth > pdfPagesContainer.clientWidth) {
-          pdfPagesContainer.scrollLeft = Math.max(0, targetEl.offsetLeft + targetEl.offsetWidth * anchorFracX - pdfPagesContainer.clientWidth / 2);
-        } else {
-          pdfPagesContainer.scrollLeft = 0;
-        }
-      }
+      if (targetEl) pdfPagesContainer.scrollTop = Math.max(0, targetEl.offsetTop - 12);
     } else {
       pdfPagesContainer.scrollTop = 0;
       pdfPagesContainer.scrollLeft = 0;
     }
   }
 
-  async function renderSinglePdfCanvas(slot, pageNum, containerW, buildToken) {
+  async function renderSinglePdfCanvas(slot, pageNum, containerW, buildToken, softRefresh = false) {
     if (!activePdfDoc || buildToken !== pdfBuildToken || !slot.isConnected) return;
-    if (slot.dataset.rendered === "true" || slot.dataset.rendered === "loading") return;
-    slot.dataset.rendered = "loading";
+    const expectedKey = `${containerW}:${pdfZoom.toFixed(2)}`;
+    if (softRefresh) {
+      if (slot.dataset.renderedKey === expectedKey || slot.dataset.renderingKey === expectedKey) return;
+      slot.dataset.renderingKey = expectedKey;
+    } else {
+      if (slot.dataset.rendered === "true" || slot.dataset.rendered === "loading") return;
+      slot.dataset.rendered = "loading";
+    }
 
     try {
       const page = await activePdfDoc.getPage(pageNum);
@@ -3311,8 +3403,20 @@ document.addEventListener("DOMContentLoaded", () => {
       const baseVp = page.getViewport({ scale: 1 });
       const exactScale = (containerW / baseVp.width) * pdfZoom;
       const cssVp = page.getViewport({ scale: exactScale });
-      slot.style.width = `${Math.floor(cssVp.width)}px`;
-      slot.style.height = `${Math.floor(cssVp.height)}px`;
+      const prevH = slot.offsetHeight;
+      const nextW = Math.floor(cssVp.width);
+      const nextH = Math.floor(cssVp.height);
+      if (prevH !== nextH || slot.offsetWidth !== nextW) {
+        const cRect = pdfPagesContainer.getBoundingClientRect();
+        const sRect = slot.getBoundingClientRect();
+        slot.style.width = `${nextW}px`;
+        slot.style.height = `${nextH}px`;
+        if (sRect.bottom < cRect.top + 4) {
+          pdfPagesContainer.scrollTop += (nextH - prevH);
+        }
+      }
+      slot.dataset.baseW = String(baseVp.width);
+      slot.dataset.baseH = String(baseVp.height);
 
       let dpr = Math.min(window.devicePixelRatio || 1, 2);
       let vp = page.getViewport({ scale: exactScale * dpr });
@@ -3329,26 +3433,38 @@ document.addEventListener("DOMContentLoaded", () => {
       bgCanvas.style.display = "block";
       bgCanvas.style.pointerEvents = "none";
 
-      const inkCanvas = document.createElement("canvas");
-      inkCanvas.className = "pdf-ink-canvas absolute inset-0 w-full h-full z-10";
-      inkCanvas.width = bgCanvas.width;
-      inkCanvas.height = bgCanvas.height;
-      applyInkTouchSettings(inkCanvas);
-
       const ctx = bgCanvas.getContext("2d");
       await page.render({ canvasContext: ctx, viewport: vp }).promise;
       if (!activePdfDoc || buildToken !== pdfBuildToken || !slot.isConnected) return;
 
-      slot.querySelectorAll("canvas").forEach(c => c.remove());
-      slot.insertBefore(inkCanvas, slot.firstChild);
-      slot.insertBefore(bgCanvas, inkCanvas);
-      slot.dataset.rendered = "true";
+      const existingBg = slot.querySelector("canvas:not(.pdf-ink-canvas)");
+      const existingInk = slot.querySelector(".pdf-ink-canvas");
+      if (softRefresh && existingBg && existingInk) {
+        existingBg.replaceWith(bgCanvas);
+        existingInk.width = bgCanvas.width;
+        existingInk.height = bgCanvas.height;
+        redrawInkCanvas(existingInk, String(pageNum));
+      } else {
+        const inkCanvas = document.createElement("canvas");
+        inkCanvas.className = "pdf-ink-canvas absolute inset-0 w-full h-full z-10";
+        inkCanvas.width = bgCanvas.width;
+        inkCanvas.height = bgCanvas.height;
+        applyInkTouchSettings(inkCanvas);
 
-      redrawInkCanvas(inkCanvas, String(pageNum));
-      bindInkEvents(inkCanvas, pageNum);
+        slot.querySelectorAll("canvas").forEach(c => c.remove());
+        slot.insertBefore(inkCanvas, slot.firstChild);
+        slot.insertBefore(bgCanvas, inkCanvas);
+
+        redrawInkCanvas(inkCanvas, String(pageNum));
+        bindInkEvents(inkCanvas, pageNum);
+      }
+      slot.dataset.rendered = "true";
+      slot.dataset.renderedKey = expectedKey;
+      delete slot.dataset.renderingKey;
     } catch (err) {
       if (slot.isConnected && buildToken === pdfBuildToken) {
-        slot.dataset.rendered = "false";
+        delete slot.dataset.renderingKey;
+        if (!softRefresh) slot.dataset.rendered = "false";
       }
       console.error(`Failed to render PDF page ${pageNum}:`, err);
     }
