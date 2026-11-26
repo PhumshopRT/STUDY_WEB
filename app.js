@@ -570,6 +570,18 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  function isEmbeddedHtmlLink(link) {
+    return Boolean(link && (link.idbKey || link.repoPath || (link.url && String(link.url).startsWith("shared-assets/"))));
+  }
+
+  function getLinkExternalUrl(link) {
+    if (!link) return "";
+    if (link.externalUrl && String(link.externalUrl).trim()) return String(link.externalUrl).trim();
+    const u = String(link.url || "").trim();
+    if (u && !u.startsWith("shared-assets/") && !u.startsWith("blob:")) return u;
+    return "";
+  }
+
   // Cached Blob Resolver (supports both local IDB blobs & shared GitHub assets)
   async function resolveResourceUrl(item) {
     if (!item) return "";
@@ -1241,7 +1253,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const clickAction = `openTopicStudio('${sub.id}', '${topic.id}')`;
 
-    const linkBadge = link && (link.idbKey || (link.url && link.url.startsWith("shared-assets/")))
+    const linkBadge = link && isEmbeddedHtmlLink(link)
       ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1"><i class="ph ph-code"></i><span>HTML ในตัว</span></span>`
       : link
         ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-[var(--accent-08)] text-[var(--accent)] border border-[var(--accent-32)] flex items-center gap-1"><i class="ph ph-link-simple"></i><span>${link.badge || 'เว็บสรุป'}</span></span>`
@@ -1270,11 +1282,12 @@ document.addEventListener("DOMContentLoaded", () => {
       `
       : renderPreviewPaneHtml(sub, isSlideOnly ? "slide" : "link", isSlideOnly ? slide : link, isSlideOnly ? slidePreviewSrc : linkPreviewSrc, false);
 
+    const cardExtUrl = getLinkExternalUrl(link);
     const barUrl = isPaired
       ? `${sub.code} • สรุป + สไลด์ (${slidesCount})`
       : isSlideOnly
         ? `${sub.code} • สไลด์ PDF`
-        : (link.idbKey ? "interactive-html://in-app" : (link.url || "").replace(/^https?:\/\//, "").slice(0, 36));
+        : (cardExtUrl ? cardExtUrl.replace(/^https?:\/\//, "").slice(0, 36) : (isEmbeddedHtmlLink(link) ? "interactive-html://in-app" : ""));
     const showNewTag = isNewest || idx === 0;
     const hoverLabel = isPaired ? "เปิดอ่านเรื่องนี้ (เว็บสรุป + สไลด์)" : "เปิดเข้าเรื่องนี้";
     const ctaLabel = isPaired ? "เข้าเรื่องนี้ (สรุป + สไลด์)" : "เข้าเรื่องนี้";
@@ -1342,10 +1355,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
           <div class="pt-3 border-t border-[var(--line)] flex items-center justify-between gap-2 text-xs">
             <span class="text-[11px] text-[var(--tx3)] tnum">${topic.updatedAt || sub.lastUpdated || ""}</span>
-            <span class="font-semibold text-[var(--accent)] flex items-center gap-1">
-              <span>${ctaLabel}</span>
-              <i class="ph ph-caret-right"></i>
-            </span>
+            <div class="flex items-center gap-2">
+              ${(isEmbeddedHtmlLink(link) && cardExtUrl) ? `
+                <a href="${cardExtUrl}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[var(--accent-08)] hover:bg-[var(--accent-14)] border border-[var(--accent-32)] text-[10px] font-semibold text-[var(--accent)] transition" title="เปิดลิงก์ต้นฉบับ (${cardExtUrl})">
+                  <i class="ph ph-arrow-square-out"></i>
+                  <span>เปิดลิงก์</span>
+                </a>
+              ` : ""}
+              <span class="font-semibold text-[var(--accent)] flex items-center gap-1">
+                <span>${ctaLabel}</span>
+                <i class="ph ph-caret-right"></i>
+              </span>
+            </div>
           </div>
         </div>
       </article>
@@ -1356,7 +1377,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const isFav = favorites.has(sub.id);
     const topics = sub.topics || [];
     const firstLink = sub.links[0];
-    const primaryUrl = firstLink?.idbKey ? "embedded-html://summary" : (firstLink?.url || "");
+    const primaryUrl = getLinkExternalUrl(firstLink) || (isEmbeddedHtmlLink(firstLink) ? "embedded-html://summary" : (firstLink?.url || ""));
 
     const topicsQuickTray = topics.length > 0 ? `
       <div class="pt-2.5 border-t border-[var(--line)] space-y-1.5" onclick="event.stopPropagation()">
@@ -1534,7 +1555,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       const resolvedCards = await Promise.all(matchedSubs.map(async sub => {
         let previewSrc = null;
-        const firstEmbeddable = sub.links.find(l => l.idbKey || (l.url && !l.frameRestricted && !isLikelyRestrictedUrl(l.url)));
+        const firstEmbeddable = sub.links.find(l => isEmbeddedHtmlLink(l) || (l.url && !l.frameRestricted && !isLikelyRestrictedUrl(l.url)));
         if (firstEmbeddable) previewSrc = await resolveResourceUrl(firstEmbeddable);
         return { sub, previewSrc };
       }));
@@ -1565,7 +1586,7 @@ document.addEventListener("DOMContentLoaded", () => {
       let slidePreviewSrc = null;
       if (entry.link) {
         const l = entry.link;
-        if (l.idbKey || (l.url && !l.frameRestricted && !isLikelyRestrictedUrl(l.url))) {
+        if (isEmbeddedHtmlLink(l) || (l.url && !l.frameRestricted && !isLikelyRestrictedUrl(l.url))) {
           linkPreviewSrc = await resolveResourceUrl(l);
         }
       }
@@ -1877,8 +1898,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 <button onclick="event.stopPropagation(); editActiveTopic('link')" class="admin-only text-[var(--tx3)] hover:text-[var(--accent)] p-1 rounded transition-colors" title="แก้ไข / วางโค้ด HTML">
                   <i class="ph ph-pencil-simple text-xs"></i>
                 </button>
-                ${link.url ? `
-                  <a href="${link.url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="text-[var(--tx3)] hover:text-[var(--accent)] p-1 transition-colors" title="เปิดแท็บใหม่">
+                ${(getLinkExternalUrl(link) || link.url) ? `
+                  <a href="${getLinkExternalUrl(link) || link.url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="text-[var(--tx3)] hover:text-[var(--accent)] p-1 transition-colors" title="${getLinkExternalUrl(link) ? 'เปิดลิงก์ต้นฉบับ' : 'เปิดแท็บใหม่'}">
                     <i class="ph ph-arrow-square-out text-xs"></i>
                   </a>
                 ` : ''}
@@ -1949,10 +1970,17 @@ document.addEventListener("DOMContentLoaded", () => {
     stageExternalBtn.classList.remove("hidden");
 
     const resolvedUrl = await resolveResourceUrl(link);
-    stageUrlText.textContent = link.idbKey ? "embedded-html://summary" : resolvedUrl;
-    stageExternalBtn.href = resolvedUrl;
+    const extUrl = getLinkExternalUrl(link);
+    const isHtml = isEmbeddedHtmlLink(link);
+    stageUrlText.textContent = extUrl || (isHtml ? "embedded-html://summary" : resolvedUrl);
+    stageExternalBtn.href = extUrl || resolvedUrl;
+    const stageExternalLabel = document.getElementById("stage-external-label");
+    if (stageExternalLabel) {
+      stageExternalLabel.textContent = (isHtml && extUrl) ? "เปิดลิงก์ต้นฉบับ" : "เปิดเต็มจอ";
+    }
+    stageExternalBtn.title = (isHtml && extUrl) ? `เปิดลิงก์ต้นฉบับ (${extUrl})` : "เปิดเต็มจอในแท็บใหม่";
 
-    const isRestricted = !link.idbKey && (link.frameRestricted || isLikelyRestrictedUrl(resolvedUrl));
+    const isRestricted = !isHtml && (link.frameRestricted || isLikelyRestrictedUrl(resolvedUrl));
 
     if (isRestricted) {
       clearTimeout(iframeTimeoutHandle);
@@ -2000,9 +2028,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const availH = window.screen.availHeight || 800;
     const halfW = Math.floor(availW / 2);
 
-    if (link.url) {
+    const externalTarget = getLinkExternalUrl(link) || link.url;
+    if (externalTarget) {
       window.open(
-        link.url,
+        externalTarget,
         "studyvault_external_web",
         `left=0,top=0,width=${halfW},height=${availH},resizable=yes,scrollbars=yes`
       );
@@ -2055,7 +2084,10 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   window.copyActiveUrl = function() {
-    navigator.clipboard.writeText(stageUrlText.textContent).then(() => showToast("คัดลอกลิงก์เรียบร้อย"));
+    const sub = allSubjects.find(s => s.id === activeSubjectId);
+    const link = sub?.links.find(l => l.id === activeLinkId);
+    const toCopy = getLinkExternalUrl(link) || stageUrlText.textContent;
+    navigator.clipboard.writeText(toCopy).then(() => showToast("คัดลอกลิงก์เรียบร้อย"));
   };
 
   // =========================================================================
@@ -3472,7 +3504,31 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
     document.getElementById("top-link-html-group")?.classList.toggle("hidden", topicLinkMode !== "html");
-    document.getElementById("top-link-url-group")?.classList.toggle("hidden", topicLinkMode !== "url");
+    document.getElementById("top-link-url-group")?.classList.toggle("hidden", topicLinkMode === "none");
+    const urlLabel = document.getElementById("top-url-label");
+    if (urlLabel) {
+      urlLabel.innerHTML = topicLinkMode === "url"
+        ? `<i class="ph ph-link-simple text-sky-400"></i><span>ลิงก์เว็บสรุป URL (เปิดจากลิงก์โดยตรง)</span>`
+        : `<i class="ph ph-link-simple text-sky-400"></i><span>ลิงก์เว็บต้นฉบับ (ไม่บังคับ — ใส่คู่กับโค้ดได้ เพื่อมีปุ่มกดไปลิงก์เพิ่มให้)</span>`;
+    }
+  };
+
+  window.clearSavedTopicHtml = function() {
+    if (!modalExistingLinkRecord) return;
+    delete modalExistingLinkRecord.idbKey;
+    delete modalExistingLinkRecord.repoPath;
+    if (String(modalExistingLinkRecord.url || "").startsWith("shared-assets/")) {
+      modalExistingLinkRecord.url = modalExistingLinkRecord.externalUrl || "";
+    }
+    document.getElementById("top-existing-link-badge")?.classList.add("hidden");
+    const htmlCodeEl = document.getElementById("top-html-code");
+    if (htmlCodeEl) htmlCodeEl.value = "";
+    const htmlFileEl = document.getElementById("top-html-file");
+    if (htmlFileEl) htmlFileEl.value = "";
+    if (document.getElementById("top-url-input")?.value.trim()) {
+      setTopicLinkMode("url");
+    }
+    showToast("ล้างโค้ด HTML เดิมออกจากฟอร์มแล้ว (กดบันทึกเพื่อยืนยัน)");
   };
 
   window.setTopicSlideMode = function(mode) {
@@ -3555,17 +3611,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
       modalExistingLinkRecord = editTopic.link ? { ...editTopic.link } : null;
       modalExistingSlidesList = (editTopic.slides || []).map(sl => ({ ...sl }));
+      document.getElementById("top-url-input").value = getLinkExternalUrl(modalExistingLinkRecord);
 
-      if (modalExistingLinkRecord) {
-        if (modalExistingLinkRecord.url && !modalExistingLinkRecord.idbKey) {
-          document.getElementById("top-url-input").value = modalExistingLinkRecord.url;
-          setTopicLinkMode(focusSection === "link" && !modalExistingLinkRecord.url ? "html" : "url");
-        } else {
-          setTopicLinkMode("html");
-          existingBadge?.classList.remove("hidden");
-        }
+      const hasSavedHtml = isEmbeddedHtmlLink(modalExistingLinkRecord);
+      existingBadge?.classList.toggle("hidden", !hasSavedHtml);
+      if (modalExistingLinkRecord && !hasSavedHtml && modalExistingLinkRecord.url) {
+        setTopicLinkMode(focusSection === "link" ? "html" : "url");
       } else {
-        existingBadge?.classList.add("hidden");
         setTopicLinkMode("html");
       }
 
@@ -3622,10 +3674,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const targetSubId = editTopicId ? activeSubjectId : ensureTargetSubjectId("top", topSubjectSelect);
     if (!targetSubId) return;
 
-    // 1. Prepare Summary Link (optional)
+    // 1. Prepare Summary Link (optional — supports HTML code, URL, or BOTH together)
     let nextLink = null;
+    const htmlCode = document.getElementById("top-html-code").value.trim();
+    const urlVal = document.getElementById("top-url-input").value.trim();
+
     if (topicLinkMode === "html") {
-      const htmlCode = document.getElementById("top-html-code").value.trim();
       if (htmlCode) {
         const idbKey = "html-" + Date.now();
         await StudyVaultDB.setBlob(idbKey, new Blob([htmlCode], { type: "text/html" }));
@@ -3641,12 +3695,12 @@ document.addEventListener("DOMContentLoaded", () => {
           frameRestricted: false,
           updatedAt: today
         };
-      } else if (modalExistingLinkRecord) {
+        if (urlVal) nextLink.externalUrl = urlVal;
+      } else if (isEmbeddedHtmlLink(modalExistingLinkRecord)) {
         nextLink = { ...modalExistingLinkRecord, title, subtitle, updatedAt: today };
-      }
-    } else if (topicLinkMode === "url") {
-      const urlVal = document.getElementById("top-url-input").value.trim();
-      if (urlVal) {
+        if (urlVal) nextLink.externalUrl = urlVal;
+        else delete nextLink.externalUrl;
+      } else if (urlVal) {
         nextLink = {
           id: modalExistingLinkRecord?.id || ("lnk-" + Date.now()),
           title,
@@ -3659,6 +3713,18 @@ document.addEventListener("DOMContentLoaded", () => {
           updatedAt: today
         };
       }
+    } else if (topicLinkMode === "url" && urlVal) {
+      nextLink = {
+        id: modalExistingLinkRecord?.id || ("lnk-" + Date.now()),
+        title,
+        subtitle,
+        type: "Web App",
+        url: urlVal,
+        repoPath: "",
+        badge: "Web App",
+        frameRestricted: isLikelyRestrictedUrl(urlVal),
+        updatedAt: today
+      };
     }
 
     // 2. Prepare New Slide to Attach (optional)

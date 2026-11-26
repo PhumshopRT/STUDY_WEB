@@ -215,6 +215,7 @@ const StudyVaultSync = (() => {
         frameRestricted: Boolean(link.frameRestricted),
         updatedAt: link.updatedAt || new Date().toISOString().split("T")[0]
       };
+      if (link.externalUrl) cleanLink.externalUrl = link.externalUrl;
       if (link.pairedSlideId) cleanLink.pairedSlideId = link.pairedSlideId;
       if (link.unpairedAuto) cleanLink.unpairedAuto = true;
 

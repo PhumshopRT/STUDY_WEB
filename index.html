@@ -611,8 +611,8 @@
               <button id="stage-fullscreen-btn" class="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--tx3)] hover:text-[var(--tx)] hover:bg-[var(--s3)] transition-colors" title="เต็มจอ">
                 <i class="ph ph-arrows-out text-sm"></i>
               </button>
-              <a id="stage-external-btn" href="#" target="_blank" rel="noopener noreferrer" class="sv-btn-primary h-7 px-2.5 rounded-lg text-[11px] flex items-center gap-1">
-                <span>เปิดเต็มจอ</span>
+              <a id="stage-external-btn" href="#" target="_blank" rel="noopener noreferrer" class="sv-btn-primary h-7 px-2.5 rounded-lg text-[11px] flex items-center gap-1 whitespace-nowrap">
+                <span id="stage-external-label">เปิดเต็มจอ</span>
                 <i class="ph ph-arrow-square-out text-xs"></i>
               </a>
             </div>
@@ -1004,14 +1004,15 @@
               <span>1) เว็บสรุป / โค้ด HTML ของเรื่องนี้ (ปล่อยว่างได้ถ้าเติมทีหลัง)</span>
             </label>
             <div class="flex gap-1 bg-[var(--s1)] p-0.5 rounded-lg border border-[var(--line)] text-[11px]">
-              <button type="button" onclick="setTopicLinkMode('html')" id="top-link-html" class="px-2.5 py-0.5 rounded bg-[var(--accent)] text-white font-medium">วางโค้ด / ไฟล์ HTML</button>
-              <button type="button" onclick="setTopicLinkMode('url')" id="top-link-url" class="px-2.5 py-0.5 rounded text-[var(--tx3)]">ใส่ลิงก์ URL</button>
+              <button type="button" onclick="setTopicLinkMode('html')" id="top-link-html" class="px-2.5 py-0.5 rounded bg-[var(--accent)] text-white font-medium">โค้ด HTML / + ลิงก์</button>
+              <button type="button" onclick="setTopicLinkMode('url')" id="top-link-url" class="px-2.5 py-0.5 rounded text-[var(--tx3)]">เฉพาะลิงก์ URL</button>
               <button type="button" onclick="setTopicLinkMode('none')" id="top-link-none" class="px-2.5 py-0.5 rounded text-[var(--tx3)]">ยังไม่ใส่</button>
             </div>
           </div>
 
-          <div id="top-existing-link-badge" class="hidden p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-[11px] flex items-center justify-between gap-2">
-            <span>✓ มีเว็บสรุปเดิมของเรื่องนี้อยู่แล้ว (วางใหม่ถ้าต้องการแทนที่ หรือปล่อยว่างเพื่อใช้ของเดิม)</span>
+          <div id="top-existing-link-badge" class="hidden p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-[11px] flex items-center justify-between gap-2 flex-wrap">
+            <span>✓ มีโค้ด HTML เดิมของเรื่องนี้อยู่แล้ว (วางใหม่ถ้าต้องการแทนที่ หรือปล่อยว่างเพื่อใช้ของเดิม)</span>
+            <button type="button" onclick="clearSavedTopicHtml()" class="px-2 py-0.5 rounded bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 font-medium whitespace-nowrap transition">ล้างโค้ด HTML</button>
           </div>
 
           <div id="top-link-html-group" class="space-y-2">
@@ -1019,8 +1020,12 @@
             <textarea id="top-html-code" rows="3" placeholder="วางโค้ด HTML ของเรื่องนี้ (เกม กราฟ Interactive หรือเว็บสรุป) — เว้นว่างได้ถ้ายังไม่มี" class="sv-input w-full p-2.5 rounded-xl font-mono text-[11px]"></textarea>
           </div>
 
-          <div id="top-link-url-group" class="hidden">
-            <input type="text" id="top-url-input" placeholder="https://..." class="sv-input w-full h-9 px-3 rounded-xl font-mono">
+          <div id="top-link-url-group" class="space-y-1">
+            <label id="top-url-label" for="top-url-input" class="text-[11px] text-[var(--tx2)] flex items-center gap-1.5">
+              <i class="ph ph-link-simple text-sky-400"></i>
+              <span>ลิงก์เว็บต้นฉบับ (ไม่บังคับ — ใส่คู่กับโค้ดได้ เพื่อมีปุ่มกดไปลิงก์เพิ่มให้)</span>
+            </label>
+            <input type="text" id="top-url-input" placeholder="https://... (เว้นว่างได้ถ้าไม่มีลิงก์)" class="sv-input w-full h-9 px-3 rounded-xl font-mono text-xs">
           </div>
         </div>
 
@@ -1231,9 +1236,9 @@
   </footer>
 
   <!-- Scripts -->
-  <script src="db.js?v=202611260935"></script>
-  <script src="data.js?v=202611260935"></script>
-  <script src="sync.js?v=202611260935"></script>
-  <script src="app.js?v=202611260935"></script>
+  <script src="db.js?v=202611260945"></script>
+  <script src="data.js?v=202611260945"></script>
+  <script src="sync.js?v=202611260945"></script>
+  <script src="app.js?v=202611260945"></script>
 </body>
 </html>
