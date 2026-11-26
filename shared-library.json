@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-26T19:03:09.289Z",
+  "updatedAt": "2026-11-26T19:05:40.290Z",
   "subjects": [
     {
       "id": "sub-1795656848257",
@@ -23,6 +23,35 @@
       "accent": "from-pink-500 to-rose-500",
       "lastUpdated": "2026-11-26",
       "topics": [
+        {
+          "id": "top-1795717025278",
+          "title": "Radiographic",
+          "subtitle": "",
+          "updatedAt": "2026-11-26",
+          "createdAt": 1795719935907,
+          "link": {
+            "id": "lnk-1795719935906",
+            "title": "Radiographic",
+            "subtitle": "",
+            "type": "Embedded HTML",
+            "url": "shared-assets/links/lnk-1795719935906.html",
+            "badge": "HTML ในตัว",
+            "frameRestricted": false,
+            "updatedAt": "2026-11-26",
+            "externalUrl": "https://chat.qwen.ai/s/deploy/t_cde7e956-69e1-4ef4-b7d6-dcb22f2c70b0",
+            "repoPath": "shared-assets/links/lnk-1795719935906.html"
+          },
+          "slides": [
+            {
+              "id": "sl-1795717025269",
+              "title": "Radiographic_Positioning_Course_Orientation",
+              "type": "pdf",
+              "updatedAt": "2026-11-26",
+              "url": "shared-assets/slides/sl-1795717025269.pdf",
+              "repoPath": "shared-assets/slides/sl-1795717025269.pdf"
+            }
+          ]
+        },
         {
           "id": "top-1795716970245",
           "title": "General X-ray",
@@ -49,24 +78,6 @@
               "updatedAt": "2026-11-26",
               "url": "shared-assets/slides/sl-1795716970224.pdf",
               "repoPath": "shared-assets/slides/sl-1795716970224.pdf"
-            }
-          ]
-        },
-        {
-          "id": "top-1795717025278",
-          "title": "Radiographic",
-          "subtitle": "",
-          "updatedAt": "2026-11-26",
-          "createdAt": 1795717025278,
-          "link": null,
-          "slides": [
-            {
-              "id": "sl-1795717025269",
-              "title": "Radiographic_Positioning_Course_Orientation",
-              "type": "pdf",
-              "updatedAt": "2026-11-26",
-              "url": "shared-assets/slides/sl-1795717025269.pdf",
-              "repoPath": "shared-assets/slides/sl-1795717025269.pdf"
             }
           ]
         }
