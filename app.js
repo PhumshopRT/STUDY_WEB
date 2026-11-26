@@ -593,12 +593,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   window.openAddSlideModalForSubject = function(subjectId) {
-    if (allSubjects.length === 0) {
-      document.getElementById("open-add-subject-btn").click();
-      return;
-    }
-    syncSubjectSelects(subjectId);
-    addSlideModal.classList.remove("hidden");
+    openAddSlideModal(subjectId);
   };
 
   window.openSubject = function(subjectId, updateHash = true, options = {}) {
@@ -2092,46 +2087,91 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   window.closeAddSubjectModal = () => addSubjectModal.classList.add("hidden");
 
-  document.getElementById("add-subject-form").addEventListener("submit", e => {
-    e.preventDefault();
-    const code = document.getElementById("sub-code").value.trim();
-    const title = document.getElementById("sub-title").value.trim();
-    const category = document.getElementById("sub-category").value.trim() || "ทั่วไป";
-    const icon = document.getElementById("sub-icon").value.trim() || "📘";
+  function createSubjectRecord({ code, title, category = "ทั่วไป", icon = "📘" }) {
     const today = new Date().toISOString().split("T")[0];
-    const id = "sub-" + Date.now();
-    const accent = SUBJECT_ACCENTS[allSubjects.length % SUBJECT_ACCENTS.length];
-
     const newSub = {
-      id,
+      id: "sub-" + Date.now(),
       code,
       title,
-      category,
+      category: category || "ทั่วไป",
       description: `คลังสรุปและสไลด์เรียนวิชา ${title}`,
-      icon,
-      accent,
+      icon: icon || "📘",
+      accent: SUBJECT_ACCENTS[allSubjects.length % SUBJECT_ACCENTS.length],
       lastUpdated: today,
       links: [],
       slides: []
     };
-
     customSubjects.unshift(newSub);
     saveState();
     allSubjects = getMergedSubjects();
     updateStats();
     renderCategories();
     renderManageSubjectsList();
-    syncSubjectSelects(newSub.id);
     if (!viewHome.classList.contains("hidden")) renderSubjectsGrid();
+    return newSub;
+  }
+
+  document.getElementById("add-subject-form").addEventListener("submit", e => {
+    e.preventDefault();
+    const code = document.getElementById("sub-code").value.trim();
+    const title = document.getElementById("sub-title").value.trim();
+    const category = document.getElementById("sub-category").value.trim() || "ทั่วไป";
+    const icon = document.getElementById("sub-icon").value.trim() || "📘";
+    const newSub = createSubjectRecord({ code, title, category, icon });
+    syncSubjectSelects(newSub.id);
     e.target.reset();
     showToast(`เพิ่มวิชา "${code} — ${title}" แล้ว กดเพิ่มลิงก์หรือสไลด์ได้เลย`);
   });
 
-  // Subject Lock Helpers
+  // Subject Lock + Inline Create Helpers for Upload Modals
   const lnkSubjectSelect = document.getElementById("lnk-subject-select");
   const slSubjectSelect = document.getElementById("sl-subject-select");
   const lnkLockBtn = document.getElementById("lnk-lock-btn");
   const slLockBtn = document.getElementById("sl-lock-btn");
+  const inlineSubState = { lnk: false, sl: false };
+
+  function setInlineBoxUI(prefix, showInline) {
+    const selectEl = document.getElementById(`${prefix}-subject-select`);
+    const boxEl = document.getElementById(`${prefix}-inline-sub-box`);
+    const toggleBtn = document.getElementById(`${prefix}-inline-toggle-btn`);
+    const lockBtn = document.getElementById(`${prefix}-lock-btn`);
+    const hasSubjects = allSubjects.length > 0;
+    const isVisible = !hasSubjects || showInline;
+    inlineSubState[prefix] = isVisible;
+
+    if (selectEl) selectEl.classList.toggle("hidden", isVisible);
+    if (boxEl) boxEl.classList.toggle("hidden", !isVisible);
+    if (lockBtn) lockBtn.classList.toggle("hidden", isVisible);
+    if (toggleBtn) {
+      toggleBtn.classList.toggle("hidden", !hasSubjects);
+      toggleBtn.textContent = isVisible ? "← เลือกจากวิชาที่มี" : "+ สร้างวิชาใหม่";
+    }
+  }
+
+  window.toggleInlineSubjectBox = function(prefix) {
+    if (allSubjects.length === 0) return;
+    setInlineBoxUI(prefix, !inlineSubState[prefix]);
+  };
+
+  function ensureTargetSubjectId(prefix, selectEl) {
+    if (!inlineSubState[prefix] && selectEl?.value) {
+      return selectEl.value;
+    }
+    const codeEl = document.getElementById(`${prefix}-inline-code`);
+    const titleEl = document.getElementById(`${prefix}-inline-title`);
+    const code = codeEl?.value.trim() || "";
+    const title = titleEl?.value.trim() || "";
+    if (!code || !title) {
+      showToast("กรุณากรอกรหัสวิชาและชื่อวิชา");
+      (code ? titleEl : codeEl)?.focus();
+      return null;
+    }
+    const newSub = createSubjectRecord({ code, title });
+    if (codeEl) codeEl.value = "";
+    if (titleEl) titleEl.value = "";
+    setInlineBoxUI(prefix, false);
+    return newSub.id;
+  }
 
   function syncSubjectSelects(preferredId = null) {
     const targetId = (lockedSubjectId && allSubjects.some(s => s.id === lockedSubjectId))
@@ -2158,6 +2198,9 @@ document.addEventListener("DOMContentLoaded", () => {
         btn.innerHTML = `<i class="ph ph-lock-open"></i><span>ล็อควิชานี้ไว้</span>`;
       }
     });
+
+    setInlineBoxUI("lnk", false);
+    setInlineBoxUI("sl", false);
   }
 
   window.toggleSubjectLock = function() {
@@ -2167,6 +2210,7 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast("ปลดล็อครายวิชาแล้ว สามารถเลือกเปลี่ยนวิชาได้");
     } else {
       const currentVal = (!addLinkModal.classList.contains("hidden") ? lnkSubjectSelect?.value : slSubjectSelect?.value) || activeSubjectId || allSubjects[0]?.id || "";
+      if (!currentVal) return;
       lockedSubjectId = currentVal;
       localStorage.setItem(LS_LOCKED_SUBJECT, lockedSubjectId);
       const sub = allSubjects.find(s => s.id === lockedSubjectId);
@@ -2189,22 +2233,13 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   window.openQuickSlideUpload = () => {
-    if (allSubjects.length === 0) {
-      showToast("กรุณาสร้างรายวิชาก่อนเพิ่มลิงก์หรือสไลด์");
-      document.getElementById("open-add-subject-btn").click();
-      return;
-    }
     openAddLinkModal();
   };
 
   window.openAddLinkModal = () => {
-    if (allSubjects.length === 0) {
-      showToast("กรุณาสร้างรายวิชาก่อน");
-      document.getElementById("open-add-subject-btn").click();
-      return;
-    }
     document.getElementById("lnk-edit-id").value = "";
-    document.getElementById("lnk-modal-heading").textContent = "เพิ่มลิงก์บทเรียนเข้าวิชา";
+    document.getElementById("lnk-modal-heading").textContent = "อัปโหลดลิงก์ / สไลด์เข้าวิชา";
+    document.getElementById("lnk-hub-tabs")?.classList.remove("hidden");
     document.getElementById("add-link-form").reset();
     setLnkSourceMode("url");
     syncSubjectSelects(activeSubjectId);
@@ -2218,7 +2253,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById("lnk-edit-id").value = link.id;
     document.getElementById("lnk-modal-heading").textContent = preferHtml ? "วางโค้ด HTML เพื่อฝังเว็บเต็มๆ ข้างสไลด์" : "แก้ไขลิงก์บทเรียน";
+    document.getElementById("lnk-hub-tabs")?.classList.add("hidden");
     syncSubjectSelects(activeSubjectId);
+    document.getElementById("lnk-inline-toggle-btn")?.classList.add("hidden");
     if (lnkSubjectSelect) lnkSubjectSelect.disabled = true;
     document.getElementById("lnk-title").value = link.title || "";
     document.getElementById("lnk-subtitle").value = link.subtitle || "";
@@ -2238,24 +2275,28 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("add-link-form").addEventListener("submit", async e => {
     e.preventDefault();
     const editId = document.getElementById("lnk-edit-id").value;
-    const targetSubId = editId ? activeSubjectId : (lnkSubjectSelect?.value || activeSubjectId || allSubjects[0]?.id);
-    if (!targetSubId) return;
-
     const title = document.getElementById("lnk-title").value.trim();
     const subtitle = document.getElementById("lnk-subtitle").value.trim();
     const today = new Date().toISOString().split("T")[0];
 
     let url = document.getElementById("lnk-url").value.trim();
-    let idbKey = null;
-
-    if (lnkSourceMode === "html") {
-      const htmlCode = document.getElementById("lnk-html-code").value.trim();
-      if (!htmlCode) { showToast("กรุณาเลือกไฟล์ HTML หรือวางโค้ดก่อน"); return; }
-      idbKey = "html-" + Date.now();
-      await StudyVaultDB.setBlob(idbKey, new Blob([htmlCode], { type: "text/html" }));
-    } else if (!url) {
+    const htmlCode = document.getElementById("lnk-html-code").value.trim();
+    if (lnkSourceMode === "html" && !htmlCode) {
+      showToast("กรุณาเลือกไฟล์ HTML หรือวางโค้ดก่อน");
+      return;
+    }
+    if (lnkSourceMode !== "html" && !url) {
       showToast("กรุณากรอกลิงก์ URL");
       return;
+    }
+
+    const targetSubId = editId ? activeSubjectId : ensureTargetSubjectId("lnk", lnkSubjectSelect);
+    if (!targetSubId) return;
+
+    let idbKey = null;
+    if (lnkSourceMode === "html") {
+      idbKey = "html-" + Date.now();
+      await StudyVaultDB.setBlob(idbKey, new Blob([htmlCode], { type: "text/html" }));
     }
 
     if (editId) {
@@ -2303,16 +2344,11 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Add Slide Modal
-  window.openAddSlideModal = () => {
-    if (allSubjects.length === 0) {
-      showToast("กรุณาสร้างรายวิชาก่อนเพิ่มสไลด์");
-      document.getElementById("open-add-subject-btn").click();
-      return;
-    }
-    syncSubjectSelects(activeSubjectId);
+  window.openAddSlideModal = (preferredId = null) => {
+    syncSubjectSelects(preferredId || activeSubjectId);
     addSlideModal.classList.remove("hidden");
   };
-  document.getElementById("open-add-slide-btn").addEventListener("click", openAddSlideModal);
+  document.getElementById("open-add-slide-btn").addEventListener("click", () => openAddSlideModal());
   window.closeAddSlideModal = () => addSlideModal.classList.add("hidden");
 
   window.setSlideTypeTab = function(mode) {
@@ -2334,29 +2370,34 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("add-slide-form").addEventListener("submit", async e => {
     e.preventDefault();
-    const targetSubId = slSubjectSelect?.value || activeSubjectId || allSubjects[0]?.id;
-    if (!targetSubId) return;
-
     const title = document.getElementById("sl-title").value.trim();
-    const id = "sl-" + Date.now();
-    let newSlide = { id, title, type: slideTypeMode, updatedAt: new Date().toISOString().split("T")[0] };
+    const newSlide = { id: "sl-" + Date.now(), title, type: slideTypeMode, updatedAt: new Date().toISOString().split("T")[0] };
+
+    let blobKey = null;
+    let blobData = null;
 
     if (slideTypeMode === "pdf") {
       const file = document.getElementById("sl-pdf-file").files[0];
       if (!file) { showToast("กรุณาเลือกไฟล์ PDF ก่อนบันทึก"); return; }
-      const key = "pdf-" + Date.now();
-      await StudyVaultDB.setBlob(key, file);
-      newSlide.idbKey = key;
+      blobKey = "pdf-" + Date.now();
+      blobData = file;
     } else if (slideTypeMode === "images") {
       const files = Array.from(document.getElementById("sl-img-files").files);
       if (files.length === 0) { showToast("กรุณาเลือกรูปภาพอย่างน้อย 1 รูป"); return; }
-      const key = "imgs-" + Date.now();
-      await StudyVaultDB.setBlob(key, files);
-      newSlide.idbKey = key;
+      blobKey = "imgs-" + Date.now();
+      blobData = files;
     } else {
       const url = document.getElementById("sl-url-input").value.trim();
       if (!url) { showToast("กรุณากรอกลิงก์สไลด์"); return; }
       newSlide.url = url;
+    }
+
+    const targetSubId = ensureTargetSubjectId("sl", slSubjectSelect);
+    if (!targetSubId) return;
+
+    if (blobKey && blobData) {
+      await StudyVaultDB.setBlob(blobKey, blobData);
+      newSlide.idbKey = blobKey;
     }
 
     if (!customSlidesMap[targetSubId]) customSlidesMap[targetSubId] = [];
@@ -2479,6 +2520,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (hash.startsWith("#subject/")) {
       const id = hash.replace("#subject/", "");
       if (allSubjects.some(s => s.id === id)) openSubject(id, false);
+      else navigateHome(true);
     } else {
       navigateHome(false);
     }
@@ -2517,6 +2559,7 @@ document.addEventListener("DOMContentLoaded", () => {
       openSubject(id, false);
       return;
     }
+    history.replaceState("", document.title, window.location.pathname + window.location.search);
   }
   renderSubjectsGrid();
 });
