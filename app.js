@@ -91,6 +91,16 @@ document.addEventListener("DOMContentLoaded", () => {
   isSwappedSides = loadJSON(LS_SWAP_SIDES, false);
   let lockedSubjectId = localStorage.getItem(LS_LOCKED_SUBJECT) || "";
 
+  function getPendingSyncCount() {
+    let count = customSubjects.length + deletedSubjectIds.size + deletedTopicIds.size +
+      deletedLinkIds.size + deletedSlideIds.size +
+      Object.keys(topicOverrides).length + Object.keys(linkOverrides).length + Object.keys(slideOverrides).length;
+    Object.values(customTopicsMap).forEach(arr => { count += Array.isArray(arr) ? arr.length : 0; });
+    Object.values(customLinksMap).forEach(arr => { count += Array.isArray(arr) ? arr.length : 0; });
+    Object.values(customSlidesMap).forEach(arr => { count += Array.isArray(arr) ? arr.length : 0; });
+    return count;
+  }
+
   function saveState() {
     localStorage.setItem(LS_CUSTOM_SUBJECTS, JSON.stringify(customSubjects));
     localStorage.setItem(LS_DELETED_SUBJECTS, JSON.stringify([...deletedSubjectIds]));
@@ -104,6 +114,9 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.setItem(LS_DELETED_SLIDES, JSON.stringify([...deletedSlideIds]));
     localStorage.setItem(LS_SLIDE_OVERRIDES, JSON.stringify(slideOverrides));
     localStorage.setItem(LS_FAVORITES, JSON.stringify([...favorites]));
+    if (typeof syncAdminUI === "function" && typeof adminNavBtn !== "undefined" && adminNavBtn) {
+      syncAdminUI();
+    }
   }
 
   let sharedBaseSubjects = typeof SUBJECTS_DATA !== "undefined" ? SUBJECTS_DATA : [];
@@ -377,20 +390,38 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  let isSyncInFlight = false;
+
   function syncAdminUI() {
     const unlocked = isAdminMode();
     const cfg = typeof StudyVaultSync !== "undefined" ? StudyVaultSync.getConfig() : {};
+    const pendingCount = getPendingSyncCount();
+    const syncError = String(cfg.lastSyncError || "").trim();
     document.body.dataset.admin = unlocked ? "true" : "false";
 
     if (adminNavBtn && adminNavIcon && adminNavLabel) {
       if (unlocked) {
-        adminNavBtn.className = "h-8 px-2.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/20 flex items-center gap-1.5 transition-colors text-xs font-semibold whitespace-nowrap";
-        adminNavIcon.className = "ph ph-cloud-check text-sm text-emerald-400";
-        adminNavLabel.textContent = "Admin Sync";
+        if (isSyncInFlight) {
+          adminNavBtn.className = "h-8 px-2.5 rounded-xl border border-sky-500/40 bg-sky-500/15 text-sky-300 flex items-center gap-1.5 transition-colors text-xs font-semibold whitespace-nowrap";
+          adminNavIcon.className = "ph ph-arrows-clockwise text-sm text-sky-300 animate-spin";
+          adminNavLabel.textContent = "กำลังซิงก์...";
+        } else if (syncError) {
+          adminNavBtn.className = "h-8 px-2.5 rounded-xl border border-rose-500/50 bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 flex items-center gap-1.5 transition-colors text-xs font-semibold whitespace-nowrap";
+          adminNavIcon.className = "ph ph-warning-circle text-sm text-rose-400";
+          adminNavLabel.textContent = pendingCount > 0 ? `ซิงก์ไม่สำเร็จ (${pendingCount})` : "ซิงก์ติดขัด!";
+        } else if (pendingCount > 0) {
+          adminNavBtn.className = "h-8 px-2.5 rounded-xl border border-amber-500/50 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 flex items-center gap-1.5 transition-colors text-xs font-semibold whitespace-nowrap";
+          adminNavIcon.className = "ph ph-cloud-arrow-up text-sm text-amber-400";
+          adminNavLabel.textContent = `รอซิงก์ (${pendingCount})`;
+        } else {
+          adminNavBtn.className = "h-8 px-2.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/20 flex items-center gap-1.5 transition-colors text-xs font-semibold whitespace-nowrap";
+          adminNavIcon.className = "ph ph-cloud-check text-sm text-emerald-400";
+          adminNavLabel.textContent = "Admin Sync";
+        }
       } else {
         adminNavBtn.className = "h-8 px-2.5 rounded-xl border border-[var(--line)] bg-[var(--s1)] hover:bg-[var(--s3)] text-[var(--tx2)] hover:text-[var(--tx)] flex items-center gap-1.5 transition-colors text-xs font-medium whitespace-nowrap";
         adminNavIcon.className = "ph ph-lock-key text-sm text-[var(--tx3)]";
-        adminNavLabel.textContent = "เจ้าของเว็บ (Admin)";
+        adminNavLabel.textContent = pendingCount > 0 ? `เจ้าของเว็บ (ค้างซิงก์ ${pendingCount})` : "เจ้าของเว็บ (Admin)";
       }
     }
 
@@ -398,17 +429,32 @@ document.addEventListener("DOMContentLoaded", () => {
     const badgeEl = document.getElementById("admin-sync-state-badge");
     const descEl = document.getElementById("admin-status-desc");
     const lastSyncEl = document.getElementById("admin-last-sync-text");
+    const alertEl = document.getElementById("admin-sync-alert");
     if (titleEl && badgeEl && descEl) {
       if (unlocked) {
         titleEl.textContent = `🟢 เชื่อมต่อ ${cfg.owner}/${cfg.repo} (${cfg.branch}) แล้ว`;
         badgeEl.textContent = cfg.autoSync ? "Auto-Sync เปิดอยู่" : "Manual Sync";
         badgeEl.className = "text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold";
-        descEl.textContent = "ทุกวิชา ลิงก์ โค้ด HTML และสไลด์ PDF ที่คุณเพิ่ม/ลบ จะอัปโหลดขึ้น GitHub ให้ทุกคนเปิดมาเห็นตรงกัน (ลายมือโน้ตจะแยกเฉพาะเครื่องของแต่ละคน)";
+        descEl.textContent = `ทุกวิชา ลิงก์ โค้ด HTML และสไลด์ PDF ที่อัปโหลดสำเร็จแล้วจะซิงก์ให้ทุกเครื่องเห็นตรงกัน (ตอนนี้อยู่บนเว็บกลาง ${sharedBaseSubjects.length} วิชา — ลายมือโน้ตจะแยกเฉพาะเครื่องของแต่ละคน)`;
       } else {
         titleEl.textContent = "🔒 ยังไม่ได้ล็อกอินโหมดเจ้าของเว็บ";
         badgeEl.textContent = "Visitor Mode";
         badgeEl.className = "text-[10px] px-2 py-0.5 rounded-full bg-[var(--s3)] text-[var(--accent)] font-semibold";
-        descEl.textContent = "ทุกคนสามารถเปิดอ่านบทเรียน ดูสไลด์สะอาดๆ และจดโน้ต GoodNotes ส่วนตัวได้ แต่เฉพาะเจ้าของเว็บที่ใส่ GitHub Token เท่านั้นที่จะเพิ่ม/ลบวิชา วางโค้ด HTML และอัปโหลดสไลด์ PDF ขึ้นเว็บกลางให้ทุกคนเห็นได้";
+        descEl.textContent = `ตอนนี้เว็บกลางมี ${sharedBaseSubjects.length} วิชา — ทุกคนเปิดอ่านและจดโน้ตส่วนตัวได้ แต่เฉพาะเจ้าของเว็บที่ใส่ GitHub Token เท่านั้นที่จะซิงก์ข้อมูลขึ้นเว็บกลางให้ทุกเครื่องเห็นได้`;
+      }
+    }
+    if (alertEl) {
+      if (syncError) {
+        alertEl.className = "p-3 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-200 text-[11px] leading-relaxed font-medium";
+        alertEl.innerHTML = `<div class="font-bold text-rose-300 mb-0.5">❌ ซิงก์ขึ้น GitHub ไม่สำเร็จ ข้อมูลจึงยังไม่ไปเครื่องอื่น:</div><div>${syncError}</div>`;
+      } else if (pendingCount > 0) {
+        alertEl.className = "p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-200 text-[11px] leading-relaxed font-medium";
+        alertEl.textContent = unlocked
+          ? `⚠️ มีข้อมูลในเครื่องนี้ ${pendingCount} รายการที่ยังไม่ได้อัปโหลดขึ้นเว็บกลาง (จึงยังไม่เห็นในเครื่องอื่น) — กดปุ่มอัปโหลดด้านล่างได้เลย`
+          : `⚠️ มีข้อมูลที่สร้างไว้ในเครื่องนี้ ${pendingCount} รายการ (ยังอยู่เฉพาะเครื่องนี้) — ใส่ GitHub Token แล้วกดบันทึกเพื่อส่งขึ้นเว็บกลางให้เครื่องอื่นเห็นได้`;
+      } else {
+        alertEl.className = "hidden";
+        alertEl.textContent = "";
       }
     }
     if (lastSyncEl) lastSyncEl.textContent = formatSyncTime(cfg.lastSyncAt);
@@ -444,7 +490,10 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   window.logoutAdminMode = function() {
-    if (typeof StudyVaultSync !== "undefined") StudyVaultSync.clearConfigToken();
+    if (typeof StudyVaultSync !== "undefined") {
+      StudyVaultSync.clearConfigToken();
+      StudyVaultSync.saveConfig({ lastSyncError: "" });
+    }
     const tokenIn = document.getElementById("admin-gh-token");
     if (tokenIn) tokenIn.value = "";
     syncAdminUI();
@@ -475,9 +524,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const manualBtn = document.getElementById("admin-manual-sync-btn");
     const lastSyncEl = document.getElementById("admin-last-sync-text");
     if (manualBtn) manualBtn.disabled = true;
+    isSyncInFlight = true;
+    StudyVaultSync.saveConfig({ lastSyncError: "" });
+    syncAdminUI();
 
     const updateStatus = msg => {
-      if (adminNavLabel) adminNavLabel.textContent = msg.includes("กำลัง") ? "กำลังซิงก์..." : "Admin Sync";
+      if (adminNavLabel && msg.includes("กำลัง")) adminNavLabel.textContent = "กำลังซิงก์...";
       if (lastSyncEl) lastSyncEl.textContent = msg;
     };
 
@@ -496,6 +548,7 @@ document.addEventListener("DOMContentLoaded", () => {
       customSlidesMap = {};
       deletedSlideIds.clear();
       slideOverrides = {};
+      isSyncInFlight = false;
       saveState();
       allSubjects = getMergedSubjects();
       syncAdminUI();
@@ -513,13 +566,16 @@ document.addEventListener("DOMContentLoaded", () => {
       return true;
     } catch (err) {
       console.error("GitHub Sync failed:", err);
+      isSyncInFlight = false;
+      StudyVaultSync.saveConfig({ lastSyncError: err.message || "ซิงก์ไม่สำเร็จ" });
       syncAdminUI();
       if (lastSyncEl) lastSyncEl.textContent = `ผิดพลาด: ${err.message}`;
       showToast(isAuto
-        ? `บันทึกในเครื่องแล้ว (ซิงก์ขึ้น GitHub ไม่สำเร็จ: ${err.message})`
+        ? `บันทึกในเครื่องแล้ว (ซิงก์ขึ้น GitHub ไม่สำเร็จ — กดปุ่มแดงด้านบนเพื่อดูสาเหตุ: ${err.message})`
         : `ซิงก์ไม่สำเร็จ: ${err.message}`);
       return false;
     } finally {
+      isSyncInFlight = false;
       if (manualBtn) manualBtn.disabled = false;
     }
   }
@@ -550,15 +606,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (saveBtn) saveBtn.disabled = true;
     try {
       await StudyVaultSync.verifyRepoAccess({ owner, repo, branch, token });
-      StudyVaultSync.saveConfig({ owner, repo, branch, token, autoSync });
+      StudyVaultSync.saveConfig({ owner, repo, branch, token, autoSync, verifiedAt: new Date().toISOString(), lastSyncError: "" });
       syncAdminUI();
       if (activeSubjectId) openSubject(activeSubjectId, false);
       else renderSubjectsGrid();
       showToast("ปลดล็อกโหมดเจ้าของเว็บสำเร็จ!");
 
-      const hasPendingLocal = customSubjects.length > 0 || deletedSubjectIds.size > 0 ||
-        Object.keys(customLinksMap).length > 0 || deletedLinkIds.size > 0 ||
-        Object.keys(linkOverrides).length > 0 || Object.keys(customSlidesMap).length > 0 || deletedSlideIds.size > 0;
+      const hasPendingLocal = getPendingSyncCount() > 0;
       if (hasPendingLocal && autoSync) {
         await syncLibraryToGitHub(true);
       }
@@ -3973,6 +4027,7 @@ document.addEventListener("DOMContentLoaded", () => {
     allSubjects = getMergedSubjects();
     updateStats();
     renderCategories();
+    syncAdminUI();
 
     const params = new URLSearchParams(window.location.search);
     if (params.get("slidePopout") === "1") {
@@ -4000,6 +4055,13 @@ document.addEventListener("DOMContentLoaded", () => {
       history.replaceState("", document.title, window.location.pathname + window.location.search);
     }
     renderSubjectsGrid();
+
+    if (isAdminMode() && typeof StudyVaultSync !== "undefined") {
+      const cfg = StudyVaultSync.getConfig();
+      if (cfg.autoSync && getPendingSyncCount() > 0 && !cfg.lastSyncError) {
+        setTimeout(() => syncLibraryToGitHub(true), 350);
+      }
+    }
   }
 
   bootstrapApp();

@@ -10,7 +10,7 @@ const StudyVaultSync = (() => {
   const DEFAULT_OWNER = "PhumshopRT";
   const DEFAULT_REPO = "STUDY_WEB";
   const DEFAULT_BRANCH = "main";
-  const MAX_GITHUB_FILE_BYTES = 24 * 1024 * 1024; // ~24MB safe limit for GitHub REST blobs
+  const MAX_GITHUB_FILE_BYTES = 35 * 1024 * 1024; // ~35MB safe limit for GitHub REST git blobs (<100MB payload ceiling)
 
   let publishInFlight = null;
   let dirtyAfterCurrent = false;
@@ -25,7 +25,9 @@ const StudyVaultSync = (() => {
         branch: parsed.branch || DEFAULT_BRANCH,
         token: parsed.token || "",
         autoSync: parsed.autoSync !== false,
-        lastSyncAt: parsed.lastSyncAt || ""
+        lastSyncAt: parsed.lastSyncAt || "",
+        verifiedAt: parsed.verifiedAt || "",
+        lastSyncError: parsed.lastSyncError || ""
       };
     } catch {
       return {
@@ -34,7 +36,9 @@ const StudyVaultSync = (() => {
         branch: DEFAULT_BRANCH,
         token: "",
         autoSync: true,
-        lastSyncAt: ""
+        lastSyncAt: "",
+        verifiedAt: "",
+        lastSyncError: ""
       };
     }
   }
@@ -65,6 +69,17 @@ const StudyVaultSync = (() => {
     };
   }
 
+  function translateGitHubError(status, fallbackMsg) {
+    const raw = String(fallbackMsg || "");
+    if (status === 401 || /bad credentials/i.test(raw)) {
+      return "GitHub Token ไม่ถูกต้องหรือหมดอายุ (401) — กรุณาวาง Token ใหม่แล้วกดบันทึก";
+    }
+    if (status === 403 || /resource not accessible|insufficient|forbidden/i.test(raw)) {
+      return "Token ไม่มีสิทธิ์เขียนไฟล์ (403) — ตอนสร้าง Token ต้องตั้ง Repository access = STUDY_WEB และ Permissions → Contents = Read and write";
+    }
+    return raw || `GitHub HTTP ${status}`;
+  }
+
   async function verifyRepoAccess(cfg) {
     const token = (cfg.token || "").trim();
     if (!token) throw new Error("กรุณากรอก GitHub Token");
@@ -76,7 +91,14 @@ const StudyVaultSync = (() => {
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.message || `GitHub HTTP ${res.status}`);
+      throw new Error(translateGitHubError(res.status, body.message));
+    }
+    const oauthScopes = res.headers?.get ? res.headers.get("X-OAuth-Scopes") : null;
+    if (oauthScopes !== null) {
+      const scopes = oauthScopes.split(",").map(s => s.trim()).filter(Boolean);
+      if (!scopes.includes("repo") && !scopes.includes("public_repo")) {
+        throw new Error("Classic Token นี้ยังไม่ได้ติ๊กสิทธิ์ repo (ไม่สามารถบันทึกไฟล์ขึ้นเว็บได้)");
+      }
     }
     const repoInfo = await res.json();
     if (repoInfo.permissions && repoInfo.permissions.push === false) {
@@ -88,8 +110,8 @@ const StudyVaultSync = (() => {
   async function loadSharedSubjects() {
     const cfg = getConfig();
     const recentlySynced = cfg.lastSyncAt && (Date.now() - Date.parse(cfg.lastSyncAt) < 600000);
-    // Only query GitHub API right after Admin publish (bypassing 10-min Pages CDN cache)
-    if (cfg.token && recentlySynced && typeof fetch === "function") {
+    // Only query GitHub API when user verified a real token (either synced recently or unlocked via verifyRepoAccess)
+    if (cfg.token && (recentlySynced || cfg.verifiedAt) && typeof fetch === "function") {
       try {
         const apiUrl = `https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/contents/shared-library.json?ref=${encodeURIComponent(cfg.branch)}&t=${Date.now()}`;
         const res = await fetch(apiUrl, {
@@ -101,7 +123,7 @@ const StudyVaultSync = (() => {
           if (Array.isArray(json?.subjects)) return json.subjects;
         }
       } catch {
-        // Fallback to relative static JSON below
+        // Fallback to static Pages JSON below
       }
     }
 
@@ -155,7 +177,7 @@ const StudyVaultSync = (() => {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.message || `สร้าง Git Blob ไม่สำเร็จ (${res.status})`);
+      throw new Error(translateGitHubError(res.status, err.message || `สร้าง Git Blob ไม่สำเร็จ (${res.status})`));
     }
     const data = await res.json();
     return data.sha;
@@ -225,11 +247,11 @@ const StudyVaultSync = (() => {
         referencedAssets.add(link.repoPath);
       }
 
-      if (link.idbKey) {
+      if (link.idbKey && (!link.repoPath || !existingSharedAssets.has(link.repoPath))) {
         const blob = await StudyVaultDB.getBlob(link.idbKey);
         if (blob instanceof Blob) {
           if (blob.size > MAX_GITHUB_FILE_BYTES) {
-            throw new Error(`ไฟล์ HTML "${link.title}" ใหญ่เกิน 24MB`);
+            throw new Error(`ไฟล์ HTML "${link.title}" ขนาด ${(blob.size / (1024 * 1024)).toFixed(1)}MB ใหญ่เกินขีดจำกัด 35MB`);
           }
           onStatus(`กำลังอัปโหลด HTML "${link.title}"...`);
           const path = link.repoPath || `shared-assets/links/${link.id}.html`;
@@ -268,11 +290,11 @@ const StudyVaultSync = (() => {
         sl.repoPaths.forEach(p => referencedAssets.add(p));
       }
 
-      if (sl.type === "pdf" && sl.idbKey) {
+      if (sl.type === "pdf" && sl.idbKey && (!sl.repoPath || !existingSharedAssets.has(sl.repoPath))) {
         const blob = await StudyVaultDB.getBlob(sl.idbKey);
         if (blob instanceof Blob) {
           if (blob.size > MAX_GITHUB_FILE_BYTES) {
-            throw new Error(`ไฟล์ PDF "${sl.title}" ใหญ่เกิน 24MB (GitHub API จำกัดไม่เกิน ~25MB)`);
+            throw new Error(`ไฟล์ PDF "${sl.title}" ขนาด ${(blob.size / (1024 * 1024)).toFixed(1)}MB ใหญ่เกินขีดจำกัด 35MB ของ GitHub API`);
           }
           onStatus(`กำลังอัปโหลดสไลด์ PDF "${sl.title}" (${(blob.size / (1024 * 1024)).toFixed(1)} MB)...`);
           const path = sl.repoPath || `shared-assets/slides/${sl.id}.pdf`;
@@ -396,7 +418,7 @@ const StudyVaultSync = (() => {
     });
     if (!newTreeRes.ok) {
       const err = await newTreeRes.json().catch(() => ({}));
-      throw new Error(err.message || `อัปเดต Git Tree ไม่สำเร็จ (${newTreeRes.status})`);
+      throw new Error(translateGitHubError(newTreeRes.status, err.message || `อัปเดต Git Tree ไม่สำเร็จ (${newTreeRes.status})`));
     }
     const newTreeData = await newTreeRes.json();
 
@@ -411,7 +433,7 @@ const StudyVaultSync = (() => {
     });
     if (!newCommitRes.ok) {
       const err = await newCommitRes.json().catch(() => ({}));
-      throw new Error(err.message || `สร้าง Commit ไม่สำเร็จ (${newCommitRes.status})`);
+      throw new Error(translateGitHubError(newCommitRes.status, err.message || `สร้าง Commit ไม่สำเร็จ (${newCommitRes.status})`));
     }
     const newCommitData = await newCommitRes.json();
 
@@ -422,11 +444,11 @@ const StudyVaultSync = (() => {
     });
     if (!patchRefRes.ok) {
       const err = await patchRefRes.json().catch(() => ({}));
-      throw new Error(err.message || `อัปเดต Branch ไม่สำเร็จ (${patchRefRes.status})`);
+      throw new Error(translateGitHubError(patchRefRes.status, err.message || `อัปเดต Branch ไม่สำเร็จ (${patchRefRes.status})`));
     }
 
     const nowIso = new Date().toISOString();
-    saveConfig({ lastSyncAt: nowIso });
+    saveConfig({ lastSyncAt: nowIso, verifiedAt: nowIso, lastSyncError: "" });
     onStatus("ซิงก์สำเร็จ");
     return {
       commitSha: newCommitData.sha,
