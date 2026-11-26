@@ -2248,14 +2248,14 @@ document.addEventListener("DOMContentLoaded", () => {
   let pdfIsPinching = false;
 
   const LS_TOUCH_DRAW = "studyvault_pdf_touch_draw";
-  const LS_PEN_SIZE = "studyvault_pdf_pen_size";
+  const LS_PEN_SIZE = "studyvault_pdf_pen_size_v2";
   const LS_HL_SIZE = "studyvault_pdf_hl_size";
   let pdfTouchDrawEnabled = loadJSON(LS_TOUCH_DRAW, false); // false = 1-finger scroll + Apple Pencil draw (GoodNotes style)
   let activeStrokeSession = null;
 
   let activePdfTool = "pan";
   let pdfPenColor = "#38bdf8";
-  let pdfPenSize = Math.max(0.1, Math.min(10, Number(loadJSON(LS_PEN_SIZE, 1)) || 1));
+  let pdfPenSize = Math.max(0.1, Math.min(10, Number(loadJSON(LS_PEN_SIZE, 0.5)) || 0.5));
   let pdfHighlightColor = "#facc15";
   let pdfHighlightSize = Math.max(4, Math.min(36, Number(loadJSON(LS_HL_SIZE, 18)) || 18));
   let pdfAnnotations = {};
@@ -2266,6 +2266,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const pdfSizeSlider = document.getElementById("pdf-size-slider");
   const pdfSizeLabel = document.getElementById("pdf-size-label");
   const pdfSizeDot = document.getElementById("pdf-size-dot");
+  const pdfPreset01 = document.getElementById("pdf-preset-01");
+  const pdfPreset05 = document.getElementById("pdf-preset-05");
   const pdfTouchModeBtn = document.getElementById("pdf-touch-mode-btn");
   const pdfTouchModeIcon = document.getElementById("pdf-touch-mode-icon");
   const pdfTouchModeLabel = document.getElementById("pdf-touch-mode-label");
@@ -2300,7 +2302,33 @@ document.addEventListener("DOMContentLoaded", () => {
       pdfSizeDot.style.backgroundColor = color;
       pdfSizeDot.style.opacity = isHl ? "0.6" : "1";
     }
+    if (pdfPreset01 && pdfPreset05) {
+      pdfPreset01.classList.toggle("hidden", isHl);
+      pdfPreset05.classList.toggle("hidden", isHl);
+      const is01 = !isHl && Math.abs(Number(size) - 0.1) < 0.05;
+      const is05 = !isHl && Math.abs(Number(size) - 0.5) < 0.05;
+      pdfPreset01.className = is01
+        ? "px-1.5 h-5 rounded border border-[var(--accent)] bg-[var(--accent)] text-white text-[10px] font-semibold transition"
+        : "px-1.5 h-5 rounded border border-[var(--line)] bg-[var(--s1)] hover:border-[var(--accent)] text-[10px] font-medium text-[var(--tx2)] transition";
+      pdfPreset05.className = is05
+        ? "px-1.5 h-5 rounded border border-[var(--accent)] bg-[var(--accent)] text-white text-[10px] font-semibold transition"
+        : "px-1.5 h-5 rounded border border-[var(--line)] bg-[var(--s1)] hover:border-[var(--accent)] text-[10px] font-medium text-[var(--tx2)] transition";
+    }
   }
+
+  window.setPdfToolSize = function(val) {
+    const num = Number(val);
+    if (Number.isNaN(num)) return;
+    if (activePdfTool === "pan" || activePdfTool === "eraser") setPdfTool("pen");
+    if (activePdfTool === "highlighter") {
+      pdfHighlightSize = Math.max(4, Math.min(36, num));
+      localStorage.setItem(LS_HL_SIZE, JSON.stringify(pdfHighlightSize));
+    } else {
+      pdfPenSize = Math.max(0.1, Math.min(10, Math.round(num * 10) / 10));
+      localStorage.setItem(LS_PEN_SIZE, JSON.stringify(pdfPenSize));
+    }
+    syncAnnotationControls();
+  };
 
   function applyInkTouchSettings(inkCanvas) {
     const isDrawing = activePdfTool !== "pan";
@@ -2358,7 +2386,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (pdfColorPicker) pdfColorPicker.addEventListener("input", e => setPdfColor(e.target.value));
   if (pdfSizeSlider) {
-    pdfSizeSlider.addEventListener("input", e => {
+    const onSliderSize = e => {
       const val = Number(e.target.value);
       if (activePdfTool === "highlighter") {
         pdfHighlightSize = val;
@@ -2368,8 +2396,11 @@ document.addEventListener("DOMContentLoaded", () => {
         localStorage.setItem(LS_PEN_SIZE, JSON.stringify(val));
       }
       syncAnnotationControls();
-    });
+    };
+    pdfSizeSlider.addEventListener("input", onSliderSize);
+    pdfSizeSlider.addEventListener("change", onSliderSize);
   }
+  syncAnnotationControls();
 
   function cloneStrokes(arr) {
     return (arr || []).map(s => ({ ...s, points: s.points.map(p => ({ ...p })) }));

@@ -798,10 +798,12 @@
 
                   <div class="h-4 w-[1px] bg-[var(--line-2)]"></div>
 
-                  <div class="flex items-center gap-1.5 tnum">
-                    <span id="pdf-size-dot" class="inline-block rounded-full bg-[#38bdf8] flex-shrink-0" style="width:4px;height:4px;"></span>
-                    <input type="range" id="pdf-size-slider" min="0.1" max="10" step="0.1" value="1" class="w-16 sm:w-20 cursor-pointer">
-                    <span id="pdf-size-label" class="text-[10px] text-[var(--tx3)] w-8">1.0px</span>
+                  <div class="flex items-center gap-1 tnum">
+                    <button type="button" onclick="setPdfToolSize(0.1)" id="pdf-preset-01" class="px-1.5 h-5 rounded border border-[var(--line)] bg-[var(--s1)] hover:border-[var(--accent)] text-[10px] font-medium text-[var(--tx2)] transition" title="ขนาดเล็กสุด 0.1px">0.1</button>
+                    <button type="button" onclick="setPdfToolSize(0.5)" id="pdf-preset-05" class="px-1.5 h-5 rounded border border-[var(--line)] bg-[var(--s1)] hover:border-[var(--accent)] text-[10px] font-medium text-[var(--tx2)] transition" title="ขนาดบาง 0.5px">0.5</button>
+                    <span id="pdf-size-dot" class="inline-block rounded-full bg-[#38bdf8] flex-shrink-0 ml-0.5" style="width:3px;height:3px;"></span>
+                    <input type="range" id="pdf-size-slider" min="0.1" max="10" step="0.1" value="0.5" class="w-16 sm:w-20 cursor-pointer">
+                    <span id="pdf-size-label" class="text-[10px] text-[var(--tx3)] w-8">0.5px</span>
                   </div>
                 </div>
 
@@ -1229,9 +1231,9 @@
   </footer>
 
   <!-- Scripts -->
-  <script src="db.js"></script>
-  <script src="data.js"></script>
-  <script src="sync.js"></script>
-  <script src="app.js"></script>
+  <script src="db.js?v=202611260935"></script>
+  <script src="data.js?v=202611260935"></script>
+  <script src="sync.js?v=202611260935"></script>
+  <script src="app.js?v=202611260935"></script>
 </body>
 </html>
