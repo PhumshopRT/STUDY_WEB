@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-26T03:37:28.939Z",
+  "updatedAt": "2026-11-26T04:18:49.892Z",
   "subjects": [
     {
       "id": "sub-1795656848257",
@@ -35,6 +35,35 @@
       "lastUpdated": "2026-11-26",
       "topics": [
         {
+          "id": "top-1795660452208",
+          "title": "Ch.3",
+          "subtitle": "",
+          "updatedAt": "2026-11-26",
+          "createdAt": 1795666725603,
+          "link": {
+            "id": "lnk-1795666725603",
+            "title": "Ch.3",
+            "subtitle": "",
+            "type": "Embedded HTML",
+            "url": "shared-assets/links/lnk-1795666725603.html",
+            "badge": "HTML ในตัว",
+            "frameRestricted": false,
+            "updatedAt": "2026-11-26",
+            "externalUrl": "https://chat.qwen.ai/s/deploy/t_719b85e9-16ff-4cae-b66a-1a9b400537c7",
+            "repoPath": "shared-assets/links/lnk-1795666725603.html"
+          },
+          "slides": [
+            {
+              "id": "sl-1795660452192",
+              "title": "CH 3 - Radiation Quantities & Units and Radiation Mornitering_compressed",
+              "type": "pdf",
+              "updatedAt": "2026-11-26",
+              "url": "shared-assets/slides/sl-1795660452192.pdf",
+              "repoPath": "shared-assets/slides/sl-1795660452192.pdf"
+            }
+          ]
+        },
+        {
           "id": "top-lnk-1795659652085",
           "title": "Ch.1",
           "subtitle": "",
@@ -58,26 +87,8 @@
               "title": "CH 1 - Introduction to Radiation Protection_compressed",
               "type": "pdf",
               "updatedAt": "2026-11-26",
-              "repoPath": "shared-assets/slides/sl-1795662028982.pdf",
-              "url": "shared-assets/slides/sl-1795662028982.pdf"
-            }
-          ]
-        },
-        {
-          "id": "top-1795660452208",
-          "title": "Ch.3",
-          "subtitle": "",
-          "updatedAt": "2026-11-26",
-          "createdAt": 1795660452208,
-          "link": null,
-          "slides": [
-            {
-              "id": "sl-1795660452192",
-              "title": "CH 3 - Radiation Quantities & Units and Radiation Mornitering_compressed",
-              "type": "pdf",
-              "updatedAt": "2026-11-26",
-              "repoPath": "shared-assets/slides/sl-1795660452192.pdf",
-              "url": "shared-assets/slides/sl-1795660452192.pdf"
+              "url": "shared-assets/slides/sl-1795662028982.pdf",
+              "repoPath": "shared-assets/slides/sl-1795662028982.pdf"
             }
           ]
         },
@@ -105,8 +116,8 @@
               "title": "CH 2 - Radiation_ Types, Sources, and Doses Received, Interaction of X-Radiation With Matter _compressed",
               "type": "pdf",
               "updatedAt": "2026-11-26",
-              "repoPath": "shared-assets/slides/sl-1795660415294.pdf",
-              "url": "shared-assets/slides/sl-1795660415294.pdf"
+              "url": "shared-assets/slides/sl-1795660415294.pdf",
+              "repoPath": "shared-assets/slides/sl-1795660415294.pdf"
             }
           ]
         }
