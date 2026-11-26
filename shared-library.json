@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-26T04:18:49.892Z",
+  "updatedAt": "2026-11-26T18:16:16.373Z",
   "subjects": [
     {
       "id": "sub-1795656848257",
@@ -22,7 +22,26 @@
       "icon": "📘",
       "accent": "from-pink-500 to-rose-500",
       "lastUpdated": "2026-11-26",
-      "topics": []
+      "topics": [
+        {
+          "id": "top-1795716970245",
+          "title": "General X-ray",
+          "subtitle": "",
+          "updatedAt": "2026-11-26",
+          "createdAt": 1795716970245,
+          "link": null,
+          "slides": [
+            {
+              "id": "sl-1795716970224",
+              "title": "General X-ray_2026",
+              "type": "pdf",
+              "updatedAt": "2026-11-26",
+              "repoPath": "shared-assets/slides/sl-1795716970224.pdf",
+              "url": "shared-assets/slides/sl-1795716970224.pdf"
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "sub-1795656821805",
